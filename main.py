@@ -1,80 +1,79 @@
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
-from pydantic import BaseModel
-from twilio.rest import Client
 import os
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
-app = FastAPI(title="Radioactive Water Predicter API")
+app = FastAPI()
 
-# ====== DATA STORAGE ======
-latest_data = {}
+# ====== EMAIL CONFIG ======
+EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS")   # your Gmail
+EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD") # Gmail App Password
+NGO_EMAIL = os.getenv("NGO_EMAIL")           # NGO Email
 
-# ====== Twilio Config (set as env variables before running) ======
-TWILIO_SID = os.getenv("TWILIO_SID")
-TWILIO_TOKEN = os.getenv("TWILIO_TOKEN")
-TWILIO_FROM = os.getenv("TWILIO_FROM")
-TWILIO_TO = os.getenv("TWILIO_TO")
+# ====== Function to send email ======
+def send_email_alert(subject, body):
+    if not EMAIL_ADDRESS or not EMAIL_PASSWORD or not NGO_EMAIL:
+        print("⚠️ Email not configured. Skipping alert.")
+        return
 
-# ====== Risk Score Logic ======
-def predict_contamination(ph, tds, hardness, nitrate):
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = EMAIL_ADDRESS
+        msg['To'] = NGO_EMAIL
+        msg['Subject'] = subject
+        msg.attach(MIMEText(body, 'plain'))
+
+        with smtplib.SMTP('smtp.gmail.com', 587) as server:
+            server.starttls()
+            server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+            server.send_message(msg)
+
+        print("✅ Email sent to NGO")
+    except Exception as e:
+        print("❌ Email failed:", e)
+
+# ====== Function to calculate risk ======
+def predict_contamination(ph: float, tds: float):
     score = 0
     if ph < 6.5 or ph > 8.5: score += 30
     if tds > 500: score += 25
-    if hardness > 200: score += 20
-    if nitrate > 45: score += 25
-    return min(score, 100)
+    return score
 
-def treatment_recommendation(score):
-    if score < 30:
-        return "✅ Safe: No treatment needed."
-    elif score < 60:
-        return "⚠️ Moderate: Consider filtration before drinking."
-    else:
-        return "☢️ High Risk: Avoid consumption. Send for lab testing."
+# ====== Home Route ======
+@app.get("/")
+def home():
+    return {"status": "RAWP is running ✅", "message": "Send water data to /submit"}
 
-# ====== Data Model ======
-class Reading(BaseModel):
-    device_id: str
-    ph: float
-    tds: float
-    hardness: float
-    nitrate: float
-    location: str = "Unknown"
+# ====== Data Submit Route ======
+@app.post("/submit")
+async def submit_data(request: Request):
+    data = await request.json()
+    ph = data.get("ph", 7.0)
+    tds = data.get("tds", 300.0)
+    location = data.get("location", "Unknown")
 
-# ====== API Endpoints ======
-@app.post("/api/readings")
-async def receive_reading(reading: Reading):
-    global latest_data
-    risk_score = predict_contamination(reading.ph, reading.tds, reading.hardness, reading.nitrate)
-    recommendation = treatment_recommendation(risk_score)
+    # Calculate risk
+    risk_score = predict_contamination(ph, tds)
+    risk_level = "✅ Safe" if risk_score < 30 else "⚠️ Moderate Risk" if risk_score < 60 else "☢️ High Risk"
 
-    latest_data = {
-        "device_id": reading.device_id,
-        "ph": reading.ph,
-        "tds": reading.tds,
-        "hardness": reading.hardness,
-        "nitrate": reading.nitrate,
-        "location": reading.location,
+    # Prepare email message
+    subject = f"RAWP Alert: {risk_level}"
+    body = f"""
+    Location: {location}
+    pH: {ph}
+    TDS: {tds}
+    Risk Score: {risk_score}
+    Risk Level: {risk_level}
+    """
+
+    # Send Email
+    send_email_alert(subject, body)
+
+    return {
+        "ph": ph,
+        "tds": tds,
         "risk_score": risk_score,
-        "recommendation": recommendation
+        "risk_level": risk_level,
+        "message": "Analysis complete ✅ Email alert sent (if configured)"
     }
-
-    # ===== Send SMS if high risk =====
-    if risk_score >= 60 and TWILIO_SID and TWILIO_TOKEN:
-        try:
-            client = Client(TWILIO_SID, TWILIO_TOKEN)
-            msg = f"[Radioactive Water Predicter Alert]\nDevice: {reading.device_id}\nRisk Score: {risk_score}\nLocation: {reading.location}\nRecommendation: {recommendation}"
-            client.messages.create(body=msg, from_=TWILIO_FROM, to=TWILIO_TO)
-        except Exception as e:
-            print("SMS failed:", e)
-
-    return {"status": "success", "data": latest_data}
-
-@app.get("/api/latest")
-async def get_latest():
-    return latest_data if latest_data else {"message": "No data yet"}
-
-# ====== Serve Frontend ======
-@app.get("/", response_class=HTMLResponse)
-async def get_dashboard():
-    return FileResponse("static/index.html")
