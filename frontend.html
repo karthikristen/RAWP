@@ -1,12 +1,4 @@
-import React, { useState } from "react";
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs";
-import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import React, { useState, useEffect } from "react";
 import {
   LineChart,
   Line,
@@ -17,33 +9,127 @@ import {
   Legend,
   ResponsiveContainer,
 } from "recharts";
-import { Gauge, gaugeClasses } from "@mui/x-charts/Gauge";
-import { motion } from "framer-motion";
 
+// This is a single-file React app. All code, including
+// components and styles, must be within this one file.
+// External libraries like Recharts are imported via CDN
+// in the final HTML. Tailwind CSS is used for styling.
+
+// A self-contained SVG-based Gauge component to replace the MUI Gauge.
+const Gauge = ({ value, valueMin, valueMax, text }) => {
+  const size = 200;
+  const strokeWidth = 15;
+  const radius = (size - strokeWidth) / 2;
+  const circumference = radius * 2 * Math.PI;
+  const normalizedValue = Math.max(valueMin, Math.min(valueMax, value));
+  const strokeDashoffset = circumference - (normalizedValue / (valueMax - valueMin)) * circumference;
+
+  let gaugeColor = "#4ADE80"; // green-400
+  if (value > 60) {
+    gaugeColor = "#FACC15"; // yellow-400
+  }
+  if (value > 85) {
+    gaugeColor = "#F87171"; // red-400
+  }
+
+  return (
+    <div className="flex flex-col items-center">
+      <svg width={size} height={size}>
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke="#e5e7eb" // gray-200
+          strokeWidth={strokeWidth}
+        />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          stroke={gaugeColor}
+          strokeWidth={strokeWidth}
+          strokeDasharray={circumference}
+          strokeDashoffset={circumference}
+          style={{
+            transition: "stroke-dashoffset 0.8s ease-in-out",
+            transform: "rotate(90deg)",
+            transformOrigin: "center",
+          }}
+        >
+          <animate
+            attributeName="stroke-dashoffset"
+            from={circumference}
+            to={strokeDashoffset}
+            dur="0.8s"
+            fill="freeze"
+          />
+        </circle>
+        <text
+          x="50%"
+          y="50%"
+          dy=".3em"
+          textAnchor="middle"
+          className="text-2xl font-bold fill-current text-gray-800"
+        >
+          {text}
+        </text>
+      </svg>
+    </div>
+  );
+};
+
+// Main App component
 export default function App() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState("overview");
 
-  // Fetch report from backend
-  const fetchReport = async () => {
+  // Mock data to simulate the backend response
+  const mockFetchReport = async () => {
     setLoading(true);
-    try {
-      const res = await fetch("https://rawp.onrender.com/submit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tds: Math.random() * 100, location: "CHENNAI" }),
-      });
-      const json = await res.json();
-      setData(json);
-    } catch (err) {
-      console.error("Error fetching report:", err);
-    } finally {
-      setLoading(false);
-    }
+    // Simulate API call delay
+    await new Promise(resolve => setTimeout(resolve, 1500));
+    
+    // Generate some random data for the report
+    const tds = Math.random() * (1000 - 300) + 300;
+    const ph = Math.random() * (9.5 - 6.5) + 6.5;
+    const hardness = Math.random() * (500 - 150) + 150;
+    const nitrate = Math.random() * (50 - 10) + 10;
+    
+    const riskScore = Math.floor(
+      (tds / 1000 + ph / 9.5 + hardness / 500 + nitrate / 50) / 4 * 100
+    );
+
+    const status = riskScore > 80 ? "High Risk" : riskScore > 50 ? "Moderate Risk" : "Low Risk";
+
+    const elements = riskScore > 60 ? ["Plutonium-239", "Uranium-235"] : [];
+
+    const mockData = {
+      location: "",
+      tds: tds,
+      ph: ph,
+      hardness: hardness,
+      nitrate: nitrate,
+      risk_score: riskScore,
+      status: status,
+      safety_ranges: {
+        TDS: [300, 1000],
+        pH: [6.5, 9.5],
+        Hardness: [150, 500],
+        Nitrate: [10, 50],
+      },
+      elements: elements
+    };
+
+    setData(mockData);
+    setLoading(false);
   };
 
-  // Utility → build line chart dataset
+  // Utility to build line chart dataset
   const buildChartData = (value, range) => {
+    if (!range) return [];
     return [
       { name: "Safe Min", value: range[0] },
       { name: "Measured", value: value },
@@ -51,145 +137,179 @@ export default function App() {
     ];
   };
 
-  return (
-    <div
-      className="min-h-screen bg-gray-100 p-6"
-      style={{ fontFamily: "'Bebas Neue', sans-serif" }}
-    >
-      <motion.h1
-        className="text-4xl font-bold text-center mb-8"
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-      >
-        💧 Radioactive Water Pollution (RAWP) Detector
-      </motion.h1>
+  const cardClasses = "bg-white rounded-lg shadow-xl p-6 transition-all duration-300 transform hover:scale-[1.01]";
+  const buttonClasses = "px-6 py-3 rounded-lg font-bold text-white transition-all duration-300 transform hover:-translate-y-1 hover:shadow-lg";
+  const tabsTriggerClasses = "px-4 py-2 rounded-lg font-semibold transition-all duration-300";
 
-      <Tabs defaultValue="overview" className="max-w-5xl mx-auto">
-        <TabsList className="grid grid-cols-4 w-full mb-6">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="graphs">Graphs</TabsTrigger>
-          <TabsTrigger value="elements">Elements</TabsTrigger>
-          <TabsTrigger value="report">Report</TabsTrigger>
-        </TabsList>
+  return (
+    <div className="min-h-screen bg-gray-100 p-6 flex flex-col items-center">
+      <style>
+        {`
+          @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
+          .font-bebas {
+            font-family: 'Bebas Neue', sans-serif;
+          }
+          @keyframes fadeInDown {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+          }
+          .animate-fadeInDown {
+            animation: fadeInDown 1s ease-out forwards;
+          }
+        `}
+      </style>
+      <h1 className="text-4xl font-bold text-center mb-8 text-gray-800 font-bebas animate-fadeInDown">
+        💧 Radioactive Water Pollution (RAWP) Detector
+      </h1>
+
+      <div className="w-full max-w-5xl">
+        <div className="grid grid-cols-4 gap-2 mb-6 p-1 bg-gray-200 rounded-xl shadow-inner">
+          <button
+            onClick={() => setActiveTab("overview")}
+            className={`${tabsTriggerClasses} ${activeTab === "overview" ? "bg-white shadow-md text-gray-800" : "text-gray-600 hover:text-gray-900"}`}
+          >
+            Overview
+          </button>
+          <button
+            onClick={() => setActiveTab("graphs")}
+            className={`${tabsTriggerClasses} ${activeTab === "graphs" ? "bg-white shadow-md text-gray-800" : "text-gray-600 hover:text-gray-900"}`}
+          >
+            Graphs
+          </button>
+          <button
+            onClick={() => setActiveTab("elements")}
+            className={`${tabsTriggerClasses} ${activeTab === "elements" ? "bg-white shadow-md text-gray-800" : "text-gray-600 hover:text-gray-900"}`}
+          >
+            Elements
+          </button>
+          <button
+            onClick={() => setActiveTab("report")}
+            className={`${tabsTriggerClasses} ${activeTab === "report" ? "bg-white shadow-md text-gray-800" : "text-gray-600 hover:text-gray-900"}`}
+          >
+            Report
+          </button>
+        </div>
 
         {/* TAB 1: OVERVIEW */}
-        <TabsContent value="overview">
-          <Card className="p-6">
-            <h2 className="text-xl mb-4">📍 Water Quality Overview</h2>
+        {activeTab === "overview" && (
+          <div className={cardClasses}>
+            <h2 className="text-xl font-bold mb-4 text-gray-700">📍 Water Quality Overview</h2>
             {!data ? (
-              <Button onClick={fetchReport} disabled={loading}>
+              <button
+                onClick={mockFetchReport}
+                disabled={loading}
+                className={`${buttonClasses} bg-blue-500 hover:bg-blue-600`}
+              >
                 {loading ? "Loading..." : "Fetch Report"}
-              </Button>
+              </button>
             ) : (
-              <div className="grid grid-cols-2 gap-6">
-                <div>
-                  <p>🌍 Location: {data.location}</p>
-                  <p>💧 TDS: {data.tds.toFixed(1)}</p>
-                  <p>⚗️ pH: {data.ph.toFixed(1)}</p>
-                  <p>🪨 Hardness: {data.hardness.toFixed(1)}</p>
-                  <p>🧪 Nitrate: {data.nitrate.toFixed(1)}</p>
-                  <p>✅ Risk Score: {data.risk_score}</p>
-                  <p>⚠️ Status: {data.status}</p>
+              <div className="grid md:grid-cols-2 gap-6 items-center">
+                <div className="space-y-2">
+                  <p>🌍 Location: <span className="font-semibold">{data.location}</span></p>
+                  <p>💧 TDS: <span className="font-semibold">{data.tds.toFixed(1)} ppm</span></p>
+                  <p>⚗️ pH: <span className="font-semibold">{data.ph.toFixed(1)}</span></p>
+                  <p>🪨 Hardness: <span className="font-semibold">{data.hardness.toFixed(1)} ppm</span></p>
+                  <p>🧪 Nitrate: <span className="font-semibold">{data.nitrate.toFixed(1)} mg/L</span></p>
+                  <p>✅ Risk Score: <span className="font-bold text-lg text-green-600">{data.risk_score}</span></p>
+                  <p>⚠️ Status: <span className={`font-bold text-lg ${data.status === 'High Risk' ? 'text-red-500' : data.status === 'Moderate Risk' ? 'text-yellow-500' : 'text-green-500'}`}>{data.status}</span></p>
                 </div>
                 <div className="flex justify-center items-center">
                   <Gauge
-                    width={200}
-                    height={200}
                     value={data.risk_score}
                     valueMin={0}
                     valueMax={100}
-                    text={({ value }) => `${value}`}
-                    sx={{
-                      [`& .${gaugeClasses.valueText}`]: {
-                        fontSize: "1.5rem",
-                        fontWeight: "bold",
-                      },
-                    }}
+                    text={data.risk_score}
                   />
                 </div>
               </div>
             )}
-          </Card>
-        </TabsContent>
+          </div>
+        )}
 
         {/* TAB 2: GRAPHS */}
-        <TabsContent value="graphs" className="space-y-6">
-          <h2 className="text-xl font-bold">📊 Parameter Trends</h2>
-          {data ? (
-            <div className="grid grid-cols-2 gap-6">
-              {["pH", "TDS", "Hardness", "Nitrate"].map((param) => (
-                <Card key={param} className="p-4">
-                  <h3 className="text-lg font-semibold mb-2">{param}</h3>
-                  <ResponsiveContainer width="100%" height={250}>
-                    <LineChart
-                      data={buildChartData(
-                        data[param.toLowerCase()],
-                        data.safety_ranges[param]
-                      )}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="name" />
-                      <YAxis />
-                      <Tooltip />
-                      <Legend />
-                      <Line
-                        type="monotone"
-                        dataKey="value"
-                        stroke="#8884d8"
-                        strokeWidth={3}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </Card>
-              ))}
-            </div>
-          ) : (
-            <p className="text-gray-600">⚠️ Please fetch report first.</p>
-          )}
-        </TabsContent>
+        {activeTab === "graphs" && (
+          <div className="space-y-6">
+            <h2 className="text-xl font-bold text-gray-700">📊 Parameter Trends</h2>
+            {data ? (
+              <div className="grid md:grid-cols-2 gap-6">
+                {["pH", "TDS", "Hardness", "Nitrate"].map((param) => (
+                  <div key={param} className={cardClasses}>
+                    <h3 className="text-lg font-semibold mb-2 text-gray-600">{param}</h3>
+                    <div className="w-full h-64">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart
+                          data={buildChartData(
+                            data[param.toLowerCase()],
+                            data.safety_ranges[param]
+                          )}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="name" />
+                          <YAxis />
+                          <Tooltip />
+                          <Legend />
+                          <Line
+                            type="monotone"
+                            dataKey="value"
+                            stroke="#8884d8"
+                            strokeWidth={3}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-gray-600">⚠️ Please fetch report first.</p>
+            )}
+          </div>
+        )}
 
         {/* TAB 3: ELEMENTS */}
-        <TabsContent value="elements">
-          <Card className="p-6">
-            <h2 className="text-xl font-bold mb-4">
+        {activeTab === "elements" && (
+          <div className={cardClasses}>
+            <h2 className="text-xl font-bold mb-4 text-gray-700">
               ⚗️ Detected Elements & Explanations
             </h2>
             {data && data.elements.length > 0 ? (
-              <ul className="list-disc pl-6 space-y-2">
+              <ul className="list-disc pl-6 space-y-2 text-gray-700">
                 {data.elements.map((el, idx) => (
-                  <li key={idx}>{el}</li>
+                  <li key={idx} className="bg-red-50 p-2 rounded-lg">
+                    <span className="font-semibold text-red-700">{el}:</span> This element is a radioactive contaminant that can cause severe health issues and requires immediate attention.
+                  </li>
                 ))}
               </ul>
             ) : (
-              <p className="text-gray-600">
+              <p className="text-gray-600 bg-green-50 p-4 rounded-lg">
                 ✅ No unusual radioactive elements detected.
               </p>
             )}
-          </Card>
-        </TabsContent>
+          </div>
+        )}
 
         {/* TAB 4: REPORT */}
-        <TabsContent value="report">
-          <Card className="p-6">
-            <h2 className="text-xl font-bold mb-4">📧 Generate & Send Report</h2>
+        {activeTab === "report" && (
+          <div className={cardClasses}>
+            <h2 className="text-xl font-bold mb-4 text-gray-700">📧 Generate & Send Report</h2>
             {data ? (
               <div>
-                <pre className="bg-gray-200 p-4 rounded mb-4 text-sm">
+                <pre className="bg-gray-200 p-4 rounded-lg mb-4 text-sm whitespace-pre-wrap break-all text-gray-800">
                   {JSON.stringify(data, null, 2)}
                 </pre>
                 <p className="mb-4 text-gray-700">
-                  The report will be automatically sent to the NGO email (
-                  {process.env.NEXT_PUBLIC_ALERT_EMAIL || "configured in backend"}
-                  ).
+                  The report will be automatically sent to the NGO email.
                 </p>
-                <Button disabled>Report Sent ✅</Button>
+                <button disabled className={`${buttonClasses} bg-green-500 opacity-50`}>
+                  Report Sent ✅
+                </button>
               </div>
             ) : (
               <p className="text-gray-600">⚠️ Fetch report first.</p>
             )}
-          </Card>
-        </TabsContent>
-      </Tabs>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
