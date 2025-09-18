@@ -78,14 +78,16 @@
       }
     });
 
-    // === Send Report (Resend Last Data via Email) ===
-    document.getElementById("sendReport").addEventListener("click", async () => {
-      if (!lastData) {
-        alert("No data yet. Please fetch ESP reading first.");
-        return;
-      }
-      alert("✅ Report has been sent to NGO via email.");
-    });
+  // === Send Report (call /report backend) ===
+document.getElementById("sendReport").addEventListener("click", async () => {
+  try {
+    let res = await fetch(`${backend}/report`, { method: "POST" });
+    let data = await res.json();
+    alert(data.message);
+  } catch (err) {
+    alert("❌ Failed to send report");
+  }
+});
 
     // === Display results in dashboard ===
     function displayResults(data) {
