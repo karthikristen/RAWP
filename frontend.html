@@ -1,132 +1,195 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>RAWP – Radio Active Water Predicter</title>
+import React, { useState } from "react";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
+import { Gauge, gaugeClasses } from "@mui/x-charts/Gauge";
+import { motion } from "framer-motion";
 
-  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap" rel="stylesheet">
-  <style>
-    body { font-family: 'Bebas Neue', sans-serif; background: #0d0d0d; color: #e0e0e0; text-align: center; margin: 0; }
-    h1, h2 { color: #39ff14; }
-    .tab { display: flex; justify-content: center; background: #1a1a1a; }
-    .tab button { background: none; border: none; padding: 14px 20px; cursor: pointer; color: #e0e0e0; }
-    .tab button.active { border-bottom: 3px solid #39ff14; color: #39ff14; }
-    .tab-content { display: none; padding: 20px; min-height: 400px; }
-    input, textarea { width: 80%; margin: 10px; padding: 8px; border-radius: 5px; }
-    button { padding: 10px 20px; background: #39ff14; border: none; border-radius: 6px; cursor: pointer; }
-  </style>
-</head>
-<body>
-  <h1>💧☢️ RAWP – Radio Active Water Predicter</h1>
+export default function App() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(false);
 
-  <div class="tab">
-    <button class="tablinks" onclick="openTab(event, 'dashboard')" id="defaultOpen">Dashboard</button>
-    <button class="tablinks" onclick="openTab(event, 'graphs')">Graphs</button>
-    <button class="tablinks" onclick="openTab(event, 'manual')">Manual Input</button>
-    <button class="tablinks" onclick="openTab(event, 'report')">Report</button>
-  </div>
-
-  <!-- Dashboard -->
-  <div id="dashboard" class="tab-content">
-    <h2>📊 Live Dashboard</h2>
-    <div id="dashboard-data">Loading...</div>
-  </div>
-
-  <!-- Graphs -->
-  <div id="graphs" class="tab-content">
-    <h2>📉 Parameter Graphs vs WHO Safe Ranges</h2>
-    <canvas id="phChart"></canvas>
-    <canvas id="tdsChart"></canvas>
-    <canvas id="hardnessChart"></canvas>
-    <canvas id="nitrateChart"></canvas>
-  </div>
-
-  <!-- Manual Input -->
-  <div id="manual" class="tab-content">
-    <h2>✍️ Enter Values Manually</h2>
-    <input type="text" id="location" placeholder="Location (e.g. Chennai)"><br>
-    <input type="number" id="ph" placeholder="pH (0-14)" step="0.1"><br>
-    <input type="number" id="tds" placeholder="TDS (mg/L)"><br>
-    <input type="number" id="hardness" placeholder="Hardness (mg/L)"><br>
-    <input type="number" id="nitrate" placeholder="Nitrate (mg/L)"><br>
-    <button onclick="submitManual()">Submit</button>
-    <div id="manual-status"></div>
-  </div>
-
-  <!-- Report -->
-  <div id="report" class="tab-content">
-    <h2>📧 Generate & Send Report</h2>
-    <textarea id="notes" placeholder="Notes for NGO"></textarea>
-    <button onclick="sendReport()">Send Report</button>
-    <div id="report-status"></div>
-  </div>
-
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script>
-    const apiBase = "https://rawp.onrender.com";
-
-    async function fetchDashboard() {
-      try {
-        const res = await fetch(apiBase + "/latest");
-        const data = await res.json();
-        document.getElementById("dashboard-data").innerHTML = `
-          <p>Location: ${data.location}</p>
-          <p>pH: ${data.ph}</p>
-          <p>TDS: ${data.tds} mg/L</p>
-          <p>Hardness: ${data.hardness} mg/L</p>
-          <p>Nitrate: ${data.nitrate} mg/L</p>
-          <p><strong>Risk Score:</strong> ${data.risk_score}</p>
-          <p><strong>Detected Element:</strong> ${data.element}</p>`;
-        updateGraphs(data);
-      } catch { document.getElementById("dashboard-data").innerText = "Error fetching data"; }
-    }
-
-    function updateGraphs(data) {
-      new Chart(document.getElementById("phChart"), { type: "bar", data: { labels: ["pH"], datasets: [{ label: "Measured", data: [data.ph], backgroundColor: "#39ff14" }, { label: "Safe Min", data: [6.5], backgroundColor: "#ff4444" }, { label: "Safe Max", data: [8.5], backgroundColor: "#ff4444" }] } });
-      new Chart(document.getElementById("tdsChart"), { type: "bar", data: { labels: ["TDS"], datasets: [{ label: "Measured", data: [data.tds], backgroundColor: "#39ff14" }, { label: "Safe Max", data: [500], backgroundColor: "#ff4444" }] } });
-      new Chart(document.getElementById("hardnessChart"), { type: "bar", data: { labels: ["Hardness"], datasets: [{ label: "Measured", data: [data.hardness], backgroundColor: "#39ff14" }, { label: "Safe Max", data: [200], backgroundColor: "#ff4444" }] } });
-      new Chart(document.getElementById("nitrateChart"), { type: "bar", data: { labels: ["Nitrate"], datasets: [{ label: "Measured", data: [data.nitrate], backgroundColor: "#39ff14" }, { label: "Safe Max", data: [45], backgroundColor: "#ff4444" }] } });
-    }
-
-    async function submitManual() {
-      const payload = {
-        location: document.getElementById("location").value,
-        ph: parseFloat(document.getElementById("ph").value),
-        tds: parseFloat(document.getElementById("tds").value),
-        hardness: parseFloat(document.getElementById("hardness").value),
-        nitrate: parseFloat(document.getElementById("nitrate").value)
-      };
-      const res = await fetch(apiBase + "/manual_input", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload)
+  // Fetch report from backend
+  const fetchReport = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("https://rawp.onrender.com/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tds: Math.random() * 100, location: "CHENNAI" }),
       });
-      const result = await res.json();
-      document.getElementById("manual-status").innerText = result.message;
-      fetchDashboard();
+      const json = await res.json();
+      setData(json);
+    } catch (err) {
+      console.error("Error fetching report:", err);
+    } finally {
+      setLoading(false);
     }
+  };
 
-    async function sendReport() {
-      const notes = document.getElementById("notes").value;
-      const res = await fetch(apiBase + "/send_report", {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ notes })
-      });
-      const result = await res.json();
-      document.getElementById("report-status").innerText = result.message;
-    }
+  // Utility → build line chart dataset
+  const buildChartData = (value, range) => {
+    return [
+      { name: "Safe Min", value: range[0] },
+      { name: "Measured", value: value },
+      { name: "Safe Max", value: range[1] },
+    ];
+  };
 
-    function openTab(evt, tabName) {
-      var i, tabcontent, tablinks;
-      tabcontent = document.getElementsByClassName("tab-content");
-      for (i = 0; i < tabcontent.length; i++) { tabcontent[i].style.display = "none"; }
-      tablinks = document.getElementsByClassName("tablinks");
-      for (i = 0; i < tablinks.length; i++) { tablinks[i].className = tablinks[i].className.replace(" active", ""); }
-      document.getElementById(tabName).style.display = "block";
-      evt.currentTarget.className += " active";
-    }
+  return (
+    <div
+      className="min-h-screen bg-gray-100 p-6"
+      style={{ fontFamily: "'Bebas Neue', sans-serif" }}
+    >
+      <motion.h1
+        className="text-4xl font-bold text-center mb-8"
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+      >
+        💧 Radioactive Water Pollution (RAWP) Detector
+      </motion.h1>
 
-    document.getElementById("defaultOpen").click();
-    fetchDashboard();
-    setInterval(fetchDashboard, 10000);
-  </script>
-</body>
-</html>
+      <Tabs defaultValue="overview" className="max-w-5xl mx-auto">
+        <TabsList className="grid grid-cols-4 w-full mb-6">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="graphs">Graphs</TabsTrigger>
+          <TabsTrigger value="elements">Elements</TabsTrigger>
+          <TabsTrigger value="report">Report</TabsTrigger>
+        </TabsList>
+
+        {/* TAB 1: OVERVIEW */}
+        <TabsContent value="overview">
+          <Card className="p-6">
+            <h2 className="text-xl mb-4">📍 Water Quality Overview</h2>
+            {!data ? (
+              <Button onClick={fetchReport} disabled={loading}>
+                {loading ? "Loading..." : "Fetch Report"}
+              </Button>
+            ) : (
+              <div className="grid grid-cols-2 gap-6">
+                <div>
+                  <p>🌍 Location: {data.location}</p>
+                  <p>💧 TDS: {data.tds.toFixed(1)}</p>
+                  <p>⚗️ pH: {data.ph.toFixed(1)}</p>
+                  <p>🪨 Hardness: {data.hardness.toFixed(1)}</p>
+                  <p>🧪 Nitrate: {data.nitrate.toFixed(1)}</p>
+                  <p>✅ Risk Score: {data.risk_score}</p>
+                  <p>⚠️ Status: {data.status}</p>
+                </div>
+                <div className="flex justify-center items-center">
+                  <Gauge
+                    width={200}
+                    height={200}
+                    value={data.risk_score}
+                    valueMin={0}
+                    valueMax={100}
+                    text={({ value }) => `${value}`}
+                    sx={{
+                      [`& .${gaugeClasses.valueText}`]: {
+                        fontSize: "1.5rem",
+                        fontWeight: "bold",
+                      },
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+          </Card>
+        </TabsContent>
+
+        {/* TAB 2: GRAPHS */}
+        <TabsContent value="graphs" className="space-y-6">
+          <h2 className="text-xl font-bold">📊 Parameter Trends</h2>
+          {data ? (
+            <div className="grid grid-cols-2 gap-6">
+              {["pH", "TDS", "Hardness", "Nitrate"].map((param) => (
+                <Card key={param} className="p-4">
+                  <h3 className="text-lg font-semibold mb-2">{param}</h3>
+                  <ResponsiveContainer width="100%" height={250}>
+                    <LineChart
+                      data={buildChartData(
+                        data[param.toLowerCase()],
+                        data.safety_ranges[param]
+                      )}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="name" />
+                      <YAxis />
+                      <Tooltip />
+                      <Legend />
+                      <Line
+                        type="monotone"
+                        dataKey="value"
+                        stroke="#8884d8"
+                        strokeWidth={3}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <p className="text-gray-600">⚠️ Please fetch report first.</p>
+          )}
+        </TabsContent>
+
+        {/* TAB 3: ELEMENTS */}
+        <TabsContent value="elements">
+          <Card className="p-6">
+            <h2 className="text-xl font-bold mb-4">
+              ⚗️ Detected Elements & Explanations
+            </h2>
+            {data && data.elements.length > 0 ? (
+              <ul className="list-disc pl-6 space-y-2">
+                {data.elements.map((el, idx) => (
+                  <li key={idx}>{el}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-gray-600">
+                ✅ No unusual radioactive elements detected.
+              </p>
+            )}
+          </Card>
+        </TabsContent>
+
+        {/* TAB 4: REPORT */}
+        <TabsContent value="report">
+          <Card className="p-6">
+            <h2 className="text-xl font-bold mb-4">📧 Generate & Send Report</h2>
+            {data ? (
+              <div>
+                <pre className="bg-gray-200 p-4 rounded mb-4 text-sm">
+                  {JSON.stringify(data, null, 2)}
+                </pre>
+                <p className="mb-4 text-gray-700">
+                  The report will be automatically sent to the NGO email (
+                  {process.env.NEXT_PUBLIC_ALERT_EMAIL || "configured in backend"}
+                  ).
+                </p>
+                <Button disabled>Report Sent ✅</Button>
+              </div>
+            ) : (
+              <p className="text-gray-600">⚠️ Fetch report first.</p>
+            )}
+          </Card>
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
