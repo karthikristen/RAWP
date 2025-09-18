@@ -1,450 +1,138 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>💧☢️ RAWP — Radioactive Water Predicter</title>
-
-  <!-- Chart.js -->
+  <meta charset="UTF-8">
+  <title>💧☢️ RAWP - Radioactive Water Predictor</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
-    :root{--bg:#0a0a0a; --card:#0f0f10; --muted:#cfe8c6; --accent:#39FF14; --gold:#FFD300;}
-    body{background:var(--bg); color:#e8f5e9; font-family:'Bebas Neue',sans-serif; margin:0; padding:16px; text-align:center;}
-    header{max-width:1100px;margin:0 auto 18px;}
-    h1{color:var(--gold); margin:0; font-size:36px; text-shadow:0 0 8px #ffd30055;}
-    p.lead{color:var(--accent); margin:6px 0 18px;}
-
-    /* Tabs */
-    .tabs{display:flex; gap:8px; justify-content:center; margin-bottom:12px; flex-wrap:wrap;}
-    .tab-btn{background:var(--card); border:1px solid rgba(57,255,20,0.06); padding:10px 16px; border-radius:10px; cursor:pointer; color:var(--muted);}
-    .tab-btn.active{background:linear-gradient(90deg,var(--gold),#ff7518); color:#000; box-shadow:0 8px 24px rgba(255,200,50,0.06);}
-
-    .panel{display:none; max-width:1100px; margin:0 auto; background:linear-gradient(180deg,#0d0d0d,#0b0b0b); padding:18px; border-radius:12px; border:1px solid rgba(57,255,20,0.04);}
-    .panel.active{display:block;}
-
-    .grid-2{display:grid; grid-template-columns:1fr 420px; gap:18px; align-items:start;}
-    .card{background:#0f0f10; border-radius:10px; padding:12px; color:var(--muted); border:1px solid rgba(255,255,255,0.02);}
-
-    label{display:block; text-align:left; font-size:14px; color:var(--gold); margin-top:8px;}
-    input, textarea, select{width:100%; padding:8px; border-radius:8px; border:1px solid #222; background:#0b0b0b; color:#e8f5e9; font-family:inherit;}
-    button { padding:10px 14px; border-radius:8px; border:none; cursor:pointer; font-weight:bold; }
-    .btn-primary{background:var(--gold); color:#000;}
-    .btn-ghost{background:transparent; border:1px solid rgba(57,255,20,0.06); color:var(--accent);}
-
-    .small{font-size:13px;color:#bdbdbd;}
-    pre { background:#060606; padding:12px; border-radius:8px; overflow:auto; color:#dcdcdc; text-align:left; }
-
-    /* charts */
-    canvas { background:#0c0c0c; border-radius:8px; }
-
-    footer{max-width:1100px;margin:18px auto;color:#7a7a7a; font-size:13px;}
+    body { background: #0a0a0a; color: #e8f5e9; font-family: 'Bebas Neue', sans-serif; text-align:center; }
+    h1 { color:#FFD300; text-shadow:0 0 10px #FFD300; }
+    .tabs { display:flex; justify-content:center; margin:20px 0; }
+    .tab { padding:10px 20px; cursor:pointer; background:#222; margin:0 5px; border-radius:8px; }
+    .tab.active { background:#FFD300; color:#000; font-weight:bold; }
+    .tab-content { display:none; }
+    .tab-content.active { display:block; }
+    .container { width:70%; margin:auto; padding:20px; }
+    input, textarea { padding:8px; margin:6px; width:80%; border-radius:6px; }
+    button { padding:10px 20px; margin:10px; background:#FFD300; border:none; border-radius:6px; font-weight:bold; cursor:pointer; }
+    #gauge-container { width:300px; margin:auto; }
+    .box { background:#111; padding:15px; border-radius:12px; margin:10px; }
   </style>
 </head>
 <body>
-  <header>
-    <h1>💧☢️ RAWP</h1>
-    <p class="lead">Radioactive Water Predicter — Manual, ESP, Random Test & Reports</p>
-  </header>
+  <h1>💧☢️ RAWP</h1>
+  <p>Radioactive Water Predictor</p>
 
-  <div class="tabs" role="tablist">
-    <button class="tab-btn active" data-tab="manual">✍️ Manual Input</button>
-    <button class="tab-btn" data-tab="esp">📡 ESP Data</button>
-    <button class="tab-btn" data-tab="random">🎲 Random Test</button>
-    <button class="tab-btn" data-tab="reports">📨 Reports</button>
+  <!-- Tabs -->
+  <div class="tabs">
+    <div class="tab active" data-tab="manual">Manual Input</div>
+    <div class="tab" data-tab="esp">ESP Data</div>
   </div>
 
-  <!-- ----- Manual Input ----- -->
-  <section id="manual" class="panel active">
-    <div class="grid-2">
-      <div>
-        <div class="card">
-          <h3 style="margin-top:0;color:var(--gold)">Manual Input (Judges)</h3>
-          <form id="manualForm">
-            <label>Location</label>
-            <input name="location" placeholder="Chennai" />
-            <label>pH (0–100 scale)</label>
-            <input name="ph" type="number" step="0.1" min="0" max="100" value="50" />
-            <label>TDS (0–100 scale)</label>
-            <input name="tds" type="number" step="0.1" min="0" max="100" value="25" />
-            <label>Hardness (0–100 scale)</label>
-            <input name="hardness" type="number" step="0.1" min="0" max="100" value="30" />
-            <label>Nitrate (0–100 scale)</label>
-            <input name="nitrate" type="number" step="0.1" min="0" max="100" value="10" />
-            <label>Notes (optional)</label>
-            <textarea name="notes" rows="3" placeholder="Extra notes..."></textarea>
-            <div style="margin-top:12px; display:flex; gap:10px;">
-              <button type="submit" class="btn-primary">Submit</button>
-              <button type="button" id="clearManual" class="btn-ghost">Clear</button>
-            </div>
-          </form>
-          <div id="manualStatus" class="small" style="margin-top:8px;"></div>
-        </div>
+  <!-- Manual Input Tab -->
+  <div id="manual" class="tab-content active container">
+    <form id="waterForm">
+      <input type="number" step="0.1" name="ph" placeholder="pH (0–14)" required><br>
+      <input type="number" step="0.1" name="tds" placeholder="TDS (mg/L, ≤2000)" required><br>
+      <input type="number" step="0.1" name="hardness" placeholder="Hardness (mg/L, ≤1000)" required><br>
+      <input type="number" step="0.1" name="nitrate" placeholder="Nitrate (mg/L, ≤500)" required><br>
+      <input type="text" name="location" placeholder="Location"><br>
+      <textarea name="notes" placeholder="Extra Notes..."></textarea><br>
+      <button type="submit">Run Analysis</button>
+    </form>
+    <button id="sendReportBtn" style="display:none;">📧 Send Report via Email</button>
+    <div id="result" class="box"></div>
+    <div id="gauge-container"><canvas id="gauge"></canvas></div>
+    <div id="barChartContainer"><canvas id="barChart"></canvas></div>
+  </div>
 
-        <div class="card" style="margin-top:12px;">
-          <h4 style="margin:0;color:var(--accent)">Detected Elements & Treatment</h4>
-          <div id="elementsList" class="small" style="margin-top:8px;">No data yet.</div>
-        </div>
-      </div>
+  <!-- ESP Tab -->
+  <div id="esp" class="tab-content container">
+    <p>Fetching live TDS & water data from ESP...</p>
+    <button id="fetchESP">🔄 Refresh ESP Data</button>
+    <div id="espResult" class="box"></div>
+  </div>
 
-      <div>
-        <div class="card">
-          <h4 style="margin:0;color:var(--accent)">Risk Gauge</h4>
-          <canvas id="gaugeCanvas" width="360" height="220"></canvas>
-        </div>
+  <script>
+    const backend = "https://rawp.onrender.com";
+    let lastReport = null;
 
-        <div class="card" style="margin-top:12px;">
-          <h4 style="margin:0;color:var(--accent)">WHO vs Your Values</h4>
-          <canvas id="barCanvas" width="420" height="220"></canvas>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ----- ESP Data ----- -->
-  <section id="esp" class="panel">
-    <div class="grid-2">
-      <div>
-        <div class="card">
-          <h3 style="margin:0;color:var(--gold)">ESP Live Pull</h3>
-          <p class="small">Set your ESP URL below (example: http://192.168.0.50/data). The ESP should return JSON like { "tds": 345 } or full params.</p>
-          <label>ESP URL</label>
-          <input id="espUrl" placeholder="http://192.168.x.x/data" />
-          <div style="margin-top:12px; display:flex; gap:8px;">
-            <button id="fetchEsp" class="btn-primary">Fetch & Submit to Backend</button>
-            <button id="fetchEspOnly" class="btn-ghost">Fetch Only (no submit)</button>
-          </div>
-          <div id="espStatus" class="small" style="margin-top:8px;">No ESP action yet.</div>
-        </div>
-
-        <div class="card" style="margin-top:12px;">
-          <h4 style="margin:0;color:var(--accent)">Last ESP Reading</h4>
-          <pre id="espLast">No ESP data yet.</pre>
-        </div>
-      </div>
-
-      <div>
-        <div class="card">
-          <h4 style="margin:0;color:var(--accent)">ESP Test Gauge</h4>
-          <canvas id="espGauge" width="360" height="220"></canvas>
-        </div>
-
-        <div class="card" style="margin-top:12px;">
-          <h4 style="margin:0;color:var(--accent)">ESP WHO Comparison</h4>
-          <canvas id="espBar" width="420" height="220"></canvas>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ----- Random Test ----- -->
-  <section id="random" class="panel">
-    <div class="card">
-      <h3 style="margin:0;color:var(--gold)">Random Test Data</h3>
-      <p class="small">Generate randomized scaled inputs (0–100) and send to your backend for demo.</p>
-      <div style="display:flex;gap:8px;justify-content:center;margin-top:12px;">
-        <button id="randGen" class="btn-primary">Generate & Submit</button>
-        <button id="randGenLocal" class="btn-ghost">Generate Locally (no submit)</button>
-      </div>
-      <div id="randStatus" class="small" style="margin-top:8px;">No random test run yet.</div>
-    </div>
-  </section>
-
-  <!-- ----- Reports ----- -->
-  <section id="reports" class="panel">
-    <div class="card">
-      <h3 style="margin:0;color:var(--gold)">Reports & History</h3>
-      <p class="small">Latest responses and email status (keeps a small local history during this browser session).</p>
-      <pre id="history" style="max-height:400px;overflow:auto;">No history yet.</pre>
-      <div style="margin-top:10px;">
-        <button id="clearHistory" class="btn-ghost">Clear History</button>
-      </div>
-    </div>
-  </section>
-
-  <footer>RAWP • Demo UI — change BACKEND_URL / ESP URL as needed</footer>
-
-<script>
-(() => {
-  // ====== CONFIG - change these if needed ======
-  const BACKEND_URL = "https://rawp.onrender.com"; // your backend base URL
-  // =============================================
-
-  // Tab switching
-  document.querySelectorAll('.tab-btn').forEach(btn=>{
-    btn.addEventListener('click', ()=> {
-      document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
-      btn.classList.add('active');
-      const tab = btn.dataset.tab;
-      document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
-      document.getElementById(tab).classList.add('active');
+    // Tab switching
+    document.querySelectorAll(".tab").forEach(tab => {
+      tab.addEventListener("click", () => {
+        document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+        document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
+        tab.classList.add("active");
+        document.getElementById(tab.dataset.tab).classList.add("active");
+      });
     });
-  });
 
-  // Chart instances
-  let gaugeChart=null, barChart=null, espGauge=null, espBar=null;
+    // Manual Input Submit
+    document.getElementById("waterForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const formData = new FormData(e.target);
 
-  // Small history stored in-memory (browser session)
-  const history = [];
+      const res = await fetch(`${backend}/submit`, { method: "POST", body: formData });
+      const data = await res.json();
+      lastReport = data; // save for email
 
-  // Utility: update history panel
-  function pushHistory(obj){
-    history.unshift({time:new Date().toLocaleString(), obj});
-    document.getElementById('history').textContent = history.map(h => `${h.time}\n${JSON.stringify(h.obj,null,2)}\n`).join("\n---\n");
-  }
+      document.getElementById("result").innerHTML = `
+        <h3>${data.status}</h3>
+        <p>Risk Score: ${data.risk_score}</p>
+        <p><b>Detected Elements:</b> ${data.detected_elements.length ? data.detected_elements.join(", ") : "None"}</p>
+        <p><b>Treatment:</b> ${data.treatments.join(", ")}</p>
+        <p><b>Email Status:</b> Ready to send</p>
+      `;
 
-  // Render gauge (Chart.js doughnut)
-  function renderGauge(ctxId, score){
-    try { if (window[ctxId+'Inst']) window[ctxId+'Inst'].destroy(); } catch(e){}
-    const ctx = document.getElementById(ctxId).getContext('2d');
-    const inst = new Chart(ctx, {
-      type: 'doughnut',
-      data: { datasets:[{ data:[score, 100-score], backgroundColor: score>=60?['#ff4d4d','#222'] : score>=30?['#ffb84d','#222'] : ['#39ff14','#222'] }] },
-      options: { cutout: '70%', plugins:{legend:{display:false}, tooltip:{enabled:false}}}
-    });
-    window[ctxId+'Inst'] = inst;
-  }
+      document.getElementById("sendReportBtn").style.display = "inline-block";
 
-  // Render bar chart (values vs WHO ranges visually)
-  function renderBar(ctxId, scaledInputs){
-    try { if (window[ctxId+'Bar']) window[ctxId+'Bar'].destroy(); } catch(e){}
-    const ctx = document.getElementById(ctxId).getContext('2d');
-    const labels = ['pH','TDS','Hardness','Nitrate'];
-    const values = [scaledInputs.ph, scaledInputs.tds, scaledInputs.hardness, scaledInputs.nitrate];
-    const inst = new Chart(ctx, {
-      type:'bar',
-      data: {
-        labels,
-        datasets: [
-          { label:'Measured (real units)', data: values, backgroundColor:'#ffb84d' }
-        ]
-      },
-      options: {
-        scales: { y:{ beginAtZero:true } },
-        plugins:{ legend:{display:false} }
-      }
-    });
-    window[ctxId+'Bar'] = inst;
-  }
+      // Gauge
+      new Chart(document.getElementById("gauge"), {
+        type: 'doughnut',
+        data: {
+          datasets: [{ data: [data.risk_score, 100 - data.risk_score], backgroundColor: ["red","gray"] }]
+        },
+        options: { cutout: "80%", plugins:{legend:{display:false}} }
+      });
 
-  // Display results returned by backend (common code)
-  function displayResultPayload(payload){
-    // payload structure expected:
-    // { risk_score, status, scaled_inputs, detected_elements, treatments, email_status }
-    const resDiv = document.getElementById('result');
-    const elsDiv = document.getElementById('elementsList');
-
-    resDiv.innerHTML = `<h3 style="margin:0">${payload.status}</h3>
-      <p>Risk Score: <b>${payload.risk_score}</b></p>
-      <p><b>Detected Elements:</b> ${payload.detected_elements.length? payload.detected_elements.join(', '): 'None'}</p>
-      <p><b>Treatment:</b> ${payload.treatments.join('; ')}</p>
-      <p class="small"><b>Email:</b> ${payload.email_status?.message ?? 'no email attempt'}</p>`;
-
-    elsDiv.innerHTML = payload.detected_elements.length? 
-      payload.detected_elements.map(e=>`<div style="margin-bottom:6px;"><b>${e}</b>: ${payload.treatments[payload.detected_elements.indexOf(e)] || ''}</div>`).join('') :
-      'None detected';
-
-    renderGauge('gaugeCanvas', payload.risk_score);
-    renderBar('barCanvas', payload.scaled_inputs);
-    pushHistory(payload);
-    // Also update reports panel history
-  }
-
-  // Submit form data (FormData) to backend /submit
-  async function submitToBackend(formData){
-    // backend expects form fields: ph, tds, hardness, nitrate, location, notes
-    try {
-      const res = await fetch(`${BACKEND_URL}/submit`, { method:'POST', body: formData });
-      const json = await res.json();
-      return json;
-    } catch (e) {
-      return { error: e.message || String(e) };
-    }
-  }
-
-  // ---------- Manual Form ----------
-  document.getElementById('manualForm').addEventListener('submit', async (ev)=>{
-    ev.preventDefault();
-    document.getElementById('manualStatus').textContent = 'Submitting...';
-    const form = ev.target;
-    const fd = new FormData();
-    fd.append('location', form.location.value || 'Manual');
-    fd.append('ph', parseFloat(form.ph.value || 50));
-    fd.append('tds', parseFloat(form.tds.value || 25));
-    fd.append('hardness', parseFloat(form.hardness.value || 30));
-    fd.append('nitrate', parseFloat(form.nitrate.value || 10));
-    fd.append('notes', form.notes.value || '');
-
-    const out = await submitToBackend(fd);
-    if(out.error){ document.getElementById('manualStatus').textContent = 'Error: ' + out.error; return; }
-    document.getElementById('manualStatus').textContent = 'Submitted ✔';
-    document.getElementById('manualForm').reset();
-    // show results
-    displayResultPayload(out);
-  });
-
-  document.getElementById('clearManual').addEventListener('click', ()=> {
-    document.getElementById('manualForm').reset();
-    document.getElementById('manualStatus').textContent = '';
-  });
-
-  // ---------- ESP Fetch ----------
-  async function fetchESPData(esphost){
-    const statusEl = document.getElementById('espStatus');
-    statusEl.textContent = 'Fetching...';
-    try {
-      const r = await fetch(esphost, {cache:'no-store'});
-      if(!r.ok) throw new Error('ESP fetch failed: ' + r.status);
-      const data = await r.json();
-      // expected possible shapes:
-      // {tds: <mg/L>} or {tds:..., ph:..., hardness:..., nitrate:..., location:...}
-      return data;
-    } catch (e){
-      throw e;
-    }
-  }
-
-  // helper to convert raw ESP values to scaled 0-100 fields expected by backend form
-  function espRawToScaled(obj){
-    // assume if obj provides raw mg/L values, convert to 0-100 scale used by frontend->backend:
-    // ph: raw 0-14 -> scaled percent = raw/14*100
-    // tds: raw 0-2000 -> scaled = raw/2000*100
-    // hardness: raw 0-1000 -> scaled = raw/1000*100
-    // nitrate: raw 0-500 -> scaled = raw/500*100
-    const scaled = {};
-    if('ph' in obj) scaled.ph = Math.min(100, Math.round((obj.ph/14)*100*100)/100);
-    if('tds' in obj) scaled.tds = Math.min(100, Math.round((obj.tds/2000)*100*100)/100);
-    if('hardness' in obj) scaled.hardness = Math.min(100, Math.round((obj.hardness/1000)*100*100)/100);
-    if('nitrate' in obj) scaled.nitrate = Math.min(100, Math.round((obj.nitrate/500)*100*100)/100);
-    return scaled;
-  }
-
-  // Fetch & submit to backend
-  document.getElementById('fetchEsp').addEventListener('click', async ()=>{
-    const espUrl = document.getElementById('espUrl').value.trim();
-    if(!espUrl){ document.getElementById('espStatus').textContent = 'Enter ESP URL first.'; return; }
-    document.getElementById('espStatus').textContent = 'Fetching & submitting...';
-    try {
-      const raw = await fetchESPData(espUrl);
-      // transform: if only tds provided, convert to scaled fields for backend Form
-      let scaled;
-      if(('tds' in raw || 'ph' in raw || 'hardness' in raw || 'nitrate' in raw)){
-        // if raw values appear to already be scaled (0-100), detect heuristic: if tds <= 100 then treat as scaled; else treat as raw mg/L
-        if('tds' in raw && raw.tds <= 100){
-          // assume already scaled
-          scaled = {
-            ph: raw.ph ?? 50,
-            tds: raw.tds ?? 25,
-            hardness: raw.hardness ?? 30,
-            nitrate: raw.nitrate ?? 10
-          };
-        } else {
-          // convert raw to scaled %
-          const conv = espRawToScaled(raw);
-          scaled = {
-            ph: conv.ph ?? 50,
-            tds: conv.tds ?? 25,
-            hardness: conv.hardness ?? 30,
-            nitrate: conv.nitrate ?? 10
-          };
+      // Bar Chart
+      new Chart(document.getElementById("barChart"), {
+        type: 'bar',
+        data: {
+          labels: ["pH","TDS","Hardness","Nitrate"],
+          datasets: [{
+            label: "Your Values",
+            data: [ data.scaled_inputs.ph, data.scaled_inputs.tds, data.scaled_inputs.hardness, data.scaled_inputs.nitrate ],
+            backgroundColor: "orange"
+          }]
         }
-      } else {
-        // no recognizable fields — assume it's TDS as text
-        scaled = { ph:50, tds:25, hardness:30, nitrate:10 };
-      }
+      });
+    });
 
-      // prepare FormData for backend
-      const fd = new FormData();
-      fd.append('location', raw.location ?? 'ESP Device');
-      fd.append('ph', scaled.ph);
-      fd.append('tds', scaled.tds);
-      fd.append('hardness', scaled.hardness);
-      fd.append('nitrate', scaled.nitrate);
-      fd.append('notes', 'Submitted from ESP tab');
+    // Send Email Report
+    document.getElementById("sendReportBtn").addEventListener("click", async () => {
+      if (!lastReport) return;
+      const res = await fetch(`${backend}/send_report`, {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify(lastReport)
+      });
+      const data = await res.json();
+      alert(data.message);
+    });
 
-      const out = await submitToBackend(fd);
-      if(out.error) {
-        document.getElementById('espStatus').textContent = 'Error: ' + out.error;
-        return;
-      }
-
-      document.getElementById('espStatus').textContent = 'ESP data submitted ✔';
-      document.getElementById('espLast').textContent = JSON.stringify({raw, scaled, backend: out}, null, 2);
-      displayResultPayload(out);
-      renderGauge('espGauge', out.risk_score);
-      renderBar('espBar', out.scaled_inputs);
-
-    } catch (err){
-      document.getElementById('espStatus').textContent = 'ESP fetch error: ' + (err.message || err);
-    }
-  });
-
-  // Fetch only (no submit)
-  document.getElementById('fetchEspOnly').addEventListener('click', async ()=>{
-    const espUrl = document.getElementById('espUrl').value.trim();
-    if(!espUrl){ document.getElementById('espStatus').textContent = 'Enter ESP URL first.'; return; }
-    document.getElementById('espStatus').textContent = 'Fetching (no submit)...';
-    try {
-      const raw = await fetchESPData(espUrl);
-      document.getElementById('espStatus').textContent = 'ESP fetch OK (not submitted)';
-      document.getElementById('espLast').textContent = JSON.stringify(raw, null, 2);
-      const scaled = espRawToScaled(raw);
-      renderGauge('espGauge', 0);
-      renderBar('espBar', { ph: scaled.ph || 0, tds: scaled.tds || 0, hardness: scaled.hardness || 0, nitrate: scaled.nitrate || 0 });
-    } catch (err) {
-      document.getElementById('espStatus').textContent = 'ESP fetch error: ' + (err.message || err);
-    }
-  });
-
-  // ---------- Random Test ----------
-  document.getElementById('randGen').addEventListener('click', async ()=>{
-    document.getElementById('randStatus').textContent = 'Generating & submitting...';
-    const rand = {
-      location: 'Random-Test',
-      ph: (Math.random()*100).toFixed(1),
-      tds: (Math.random()*100).toFixed(1),
-      hardness: (Math.random()*100).toFixed(1),
-      nitrate: (Math.random()*100).toFixed(1)
-    };
-    const fd = new FormData();
-    fd.append('location', rand.location);
-    fd.append('ph', rand.ph);
-    fd.append('tds', rand.tds);
-    fd.append('hardness', rand.hardness);
-    fd.append('nitrate', rand.nitrate);
-    fd.append('notes', 'Random test run');
-
-    const out = await submitToBackend(fd);
-    if(out.error){ document.getElementById('randStatus').textContent = 'Error: ' + out.error; return; }
-    document.getElementById('randStatus').textContent = 'Random submitted ✔';
-    document.getElementById('espLast').textContent = JSON.stringify({rand, out}, null, 2);
-    displayResultPayload(out);
-  });
-
-  document.getElementById('randGenLocal').addEventListener('click', ()=>{
-    const rand = {
-      ph: (Math.random()*100).toFixed(1),
-      tds: (Math.random()*100).toFixed(1),
-      hardness: (Math.random()*100).toFixed(1),
-      nitrate: (Math.random()*100).toFixed(1)
-    };
-    document.getElementById('randStatus').textContent = 'Generated (not submitted): ' + JSON.stringify(rand);
-    renderBar('espBar', { ph: parseFloat(rand.ph), tds: parseFloat(rand.tds), hardness: parseFloat(rand.hardness), nitrate: parseFloat(rand.nitrate) });
-  });
-
-  // ---------- Reports ----------
-  document.getElementById('clearHistory').addEventListener('click', ()=>{
-    history.length = 0;
-    document.getElementById('history').textContent = 'Cleared.';
-  });
-
-  // Initial tiny demo: render empty charts
-  renderGauge('gaugeCanvas', 0);
-  renderBar('barCanvas', {ph:0, tds:0, hardness:0, nitrate:0});
-  renderGauge('espGauge', 0);
-  renderBar('espBar', {ph:0, tds:0, hardness:0, nitrate:0});
-})();
-</script>
+    // ESP Fake Data Fetch
+    document.getElementById("fetchESP").addEventListener("click", async () => {
+      const res = await fetch(`${backend}/esp_data`);
+      const data = await res.json();
+      document.getElementById("espResult").innerHTML = `
+        <p>pH: ${data.ph}</p>
+        <p>TDS: ${data.tds} mg/L</p>
+        <p>Hardness: ${data.hardness} mg/L</p>
+        <p>Nitrate: ${data.nitrate} mg/L</p>
+        <p>Status: ${data.status}</p>
+      `;
+    });
+  </script>
 </body>
 </html>
