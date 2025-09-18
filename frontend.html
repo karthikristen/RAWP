@@ -1,315 +1,373 @@
-import React, { useState, useEffect } from "react";
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-} from "recharts";
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>💧☢️ RAWP - Radioactive Water Predicter</title>
 
-// This is a single-file React app. All code, including
-// components and styles, must be within this one file.
-// External libraries like Recharts are imported via CDN
-// in the final HTML. Tailwind CSS is used for styling.
+  <!-- Bebas Neue -->
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap" rel="stylesheet">
 
-// A self-contained SVG-based Gauge component to replace the MUI Gauge.
-const Gauge = ({ value, valueMin, valueMax, text }) => {
-  const size = 200;
-  const strokeWidth = 15;
-  const radius = (size - strokeWidth) / 2;
-  const circumference = radius * 2 * Math.PI;
-  const normalizedValue = Math.max(valueMin, Math.min(valueMax, value));
-  const strokeDashoffset = circumference - (normalizedValue / (valueMax - valueMin)) * circumference;
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-  let gaugeColor = "#4ADE80"; // green-400
-  if (value > 60) {
-    gaugeColor = "#FACC15"; // yellow-400
-  }
-  if (value > 85) {
-    gaugeColor = "#F87171"; // red-400
-  }
+  <style>
+    :root{
+      --bg:#0a0a0a; --card:#0f0f10; --muted:#bfcfc0; --accent:#39FF14; --gold:#FFD300;
+    }
+    html,body{height:100%;margin:0;background:var(--bg); color:#e8f5e9; font-family:'Bebas Neue',sans-serif;}
+    header{padding:18px 12px;text-align:center;}
+    h1{margin:0;color:var(--gold); font-size:44px; text-shadow:0 0 8px #ffd30066;}
+    p.subtitle{margin:4px 0 18px;color:var(--accent); font-size:18px; text-shadow:0 0 6px #39ff1490;}
 
-  return (
-    <div className="flex flex-col items-center">
-      <svg width={size} height={size}>
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke="#e5e7eb" // gray-200
-          strokeWidth={strokeWidth}
-        />
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke={gaugeColor}
-          strokeWidth={strokeWidth}
-          strokeDasharray={circumference}
-          strokeDashoffset={circumference}
-          style={{
-            transition: "stroke-dashoffset 0.8s ease-in-out",
-            transform: "rotate(90deg)",
-            transformOrigin: "center",
-          }}
-        >
-          <animate
-            attributeName="stroke-dashoffset"
-            from={circumference}
-            to={strokeDashoffset}
-            dur="0.8s"
-            fill="freeze"
-          />
-        </circle>
-        <text
-          x="50%"
-          y="50%"
-          dy=".3em"
-          textAnchor="middle"
-          className="text-2xl font-bold fill-current text-gray-800"
-        >
-          {text}
-        </text>
-      </svg>
-    </div>
-  );
-};
+    /* Tabs */
+    .tabs{max-width:1100px;margin:18px auto; display:grid; grid-template-columns:repeat(4,1fr); gap:12px; padding:0 12px;}
+    .tab-btn{background:var(--card); border:1px solid rgba(57,255,20,0.08); padding:12px; cursor:pointer; border-radius:10px; color:var(--muted); text-align:center;}
+    .tab-btn.active{background:linear-gradient(90deg,var(--gold),#ff7518); color:#000; box-shadow:0 8px 28px rgba(255,190,50,0.08);}
 
-// Main App component
-export default function App() {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState("overview");
+    .container{max-width:1100px;margin:18px auto;padding:18px;}
+    .tab-panel{display:none; background:linear-gradient(180deg,#0d0d0d, #0b0b0b); border-radius:12px; padding:18px; min-height:420px; border:1px solid rgba(57,255,20,0.06);}
+    .tab-panel.active{display:block;}
 
-  // Mock data to simulate the backend response
-  const mockFetchReport = async () => {
-    setLoading(true);
-    // Simulate API call delay
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    // Generate some random data for the report
-    const tds = Math.random() * (1000 - 300) + 300;
-    const ph = Math.random() * (9.5 - 6.5) + 6.5;
-    const hardness = Math.random() * (500 - 150) + 150;
-    const nitrate = Math.random() * (50 - 10) + 10;
-    
-    const riskScore = Math.floor(
-      (tds / 1000 + ph / 9.5 + hardness / 500 + nitrate / 50) / 4 * 100
-    );
+    .grid-2x2{display:grid; grid-template-columns: repeat(2,1fr); gap:18px;}
+    canvas{background:#0e0e0e;border-radius:8px;padding:8px; width:100% !important; height:260px !important;}
 
-    const status = riskScore > 80 ? "High Risk" : riskScore > 50 ? "Moderate Risk" : "Low Risk";
+    .card{background:var(--card); padding:14px; border-radius:10px; border:1px solid rgba(255,255,255,0.02); color:var(--muted); margin-bottom:12px;}
+    .btn{background:var(--gold); color:#000; padding:10px 14px; border-radius:8px; border:none; cursor:pointer; font-weight:bold;}
+    .btn.ghost{background:transparent;color:var(--accent); border:1px solid rgba(57,255,20,0.08);}
+    input,textarea{width:100%; padding:10px; border-radius:8px; background:#0d0d0d; border:1px solid #222; color:#e8f5e9; font-family:inherit; margin-top:8px;}
+    label{display:block; text-align:left; font-size:14px; color:var(--gold); margin-top:8px;}
 
-    const elements = riskScore > 60 ? ["Plutonium-239", "Uranium-235"] : [];
+    .element-card{background:#0f0f0f;border-left:4px solid rgba(57,255,20,0.12); padding:12px;border-radius:8px;margin:10px 0;}
+    pre{background:#060606;color:#cfcfcf;padding:12px;border-radius:8px;overflow:auto; max-height:260px;}
 
-    const mockData = {
-      location: "",
-      tds: tds,
-      ph: ph,
-      hardness: hardness,
-      nitrate: nitrate,
-      risk_score: riskScore,
-      status: status,
-      safety_ranges: {
-        TDS: [300, 1000],
-        pH: [6.5, 9.5],
-        Hardness: [150, 500],
-        Nitrate: [10, 50],
-      },
-      elements: elements
-    };
+    .error{color:#ff7b7b; margin-top:8px;}
+    footer{text-align:center;color:#6f6f6f;padding:18px 0;font-size:13px;}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>💧☢️ RAWP</h1>
+    <p class="subtitle">Radioactive Water Predicter — IoT + Rule-based Screening</p>
+  </header>
 
-    setData(mockData);
-    setLoading(false);
-  };
+  <div class="tabs" role="tablist" aria-label="Main tabs">
+    <button class="tab-btn active" data-tab="dashboard">🔬 Dashboard</button>
+    <button class="tab-btn" data-tab="graphs">📊 Graphs</button>
+    <button class="tab-btn" data-tab="awareness">⚠️ Awareness</button>
+    <button class="tab-btn" data-tab="report">📄 Report</button>
+  </div>
 
-  // Utility to build line chart dataset
-  const buildChartData = (value, range) => {
-    if (!range) return [];
-    return [
-      { name: "Safe Min", value: range[0] },
-      { name: "Measured", value: value },
-      { name: "Safe Max", value: range[1] },
-    ];
-  };
-
-  const cardClasses = "bg-white rounded-lg shadow-xl p-6 transition-all duration-300 transform hover:scale-[1.01]";
-  const buttonClasses = "px-6 py-3 rounded-lg font-bold text-white transition-all duration-300 transform hover:-translate-y-1 hover:shadow-lg";
-  const tabsTriggerClasses = "px-4 py-2 rounded-lg font-semibold transition-all duration-300";
-
-  return (
-    <div className="min-h-screen bg-gray-100 p-6 flex flex-col items-center">
-      <style>
-        {`
-          @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap');
-          .font-bebas {
-            font-family: 'Bebas Neue', sans-serif;
-          }
-          @keyframes fadeInDown {
-            from { opacity: 0; transform: translateY(-20px); }
-            to { opacity: 1; transform: translateY(0); }
-          }
-          .animate-fadeInDown {
-            animation: fadeInDown 1s ease-out forwards;
-          }
-        `}
-      </style>
-      <h1 className="text-4xl font-bold text-center mb-8 text-gray-800 font-bebas animate-fadeInDown">
-        💧 Radioactive Water Pollution (RAWP) Detector
-      </h1>
-
-      <div className="w-full max-w-5xl">
-        <div className="grid grid-cols-4 gap-2 mb-6 p-1 bg-gray-200 rounded-xl shadow-inner">
-          <button
-            onClick={() => setActiveTab("overview")}
-            className={`${tabsTriggerClasses} ${activeTab === "overview" ? "bg-white shadow-md text-gray-800" : "text-gray-600 hover:text-gray-900"}`}
-          >
-            Overview
-          </button>
-          <button
-            onClick={() => setActiveTab("graphs")}
-            className={`${tabsTriggerClasses} ${activeTab === "graphs" ? "bg-white shadow-md text-gray-800" : "text-gray-600 hover:text-gray-900"}`}
-          >
-            Graphs
-          </button>
-          <button
-            onClick={() => setActiveTab("elements")}
-            className={`${tabsTriggerClasses} ${activeTab === "elements" ? "bg-white shadow-md text-gray-800" : "text-gray-600 hover:text-gray-900"}`}
-          >
-            Elements
-          </button>
-          <button
-            onClick={() => setActiveTab("report")}
-            className={`${tabsTriggerClasses} ${activeTab === "report" ? "bg-white shadow-md text-gray-800" : "text-gray-600 hover:text-gray-900"}`}
-          >
-            Report
-          </button>
+  <div class="container">
+    <!-- DASHBOARD -->
+    <section id="dashboard" class="tab-panel active">
+      <div class="card" style="display:flex;gap:18px;flex-wrap:wrap;align-items:center;">
+        <div style="flex:1;min-width:240px;">
+          <h3 style="margin:0;color:var(--gold)">Latest Reading</h3>
+          <div id="latestBlock" style="margin-top:10px;color:var(--muted)">Loading latest data...</div>
+          <div style="margin-top:12px;">
+            <button class="btn" id="refreshNow">Refresh</button>
+            <button class="btn ghost" id="toggleManual">Manual Input</button>
+          </div>
+          <div id="errorBox" class="error"></div>
         </div>
 
-        {/* TAB 1: OVERVIEW */}
-        {activeTab === "overview" && (
-          <div className={cardClasses}>
-            <h2 className="text-xl font-bold mb-4 text-gray-700">📍 Water Quality Overview</h2>
-            {!data ? (
-              <button
-                onClick={mockFetchReport}
-                disabled={loading}
-                className={`${buttonClasses} bg-blue-500 hover:bg-blue-600`}
-              >
-                {loading ? "Loading..." : "Fetch Report"}
-              </button>
-            ) : (
-              <div className="grid md:grid-cols-2 gap-6 items-center">
-                <div className="space-y-2">
-                  <p>🌍 Location: <span className="font-semibold">{data.location}</span></p>
-                  <p>💧 TDS: <span className="font-semibold">{data.tds.toFixed(1)} ppm</span></p>
-                  <p>⚗️ pH: <span className="font-semibold">{data.ph.toFixed(1)}</span></p>
-                  <p>🪨 Hardness: <span className="font-semibold">{data.hardness.toFixed(1)} ppm</span></p>
-                  <p>🧪 Nitrate: <span className="font-semibold">{data.nitrate.toFixed(1)} mg/L</span></p>
-                  <p>✅ Risk Score: <span className="font-bold text-lg text-green-600">{data.risk_score}</span></p>
-                  <p>⚠️ Status: <span className={`font-bold text-lg ${data.status === 'High Risk' ? 'text-red-500' : data.status === 'Moderate Risk' ? 'text-yellow-500' : 'text-green-500'}`}>{data.status}</span></p>
-                </div>
-                <div className="flex justify-center items-center">
-                  <Gauge
-                    value={data.risk_score}
-                    valueMin={0}
-                    valueMax={100}
-                    text={data.risk_score}
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* TAB 2: GRAPHS */}
-        {activeTab === "graphs" && (
-          <div className="space-y-6">
-            <h2 className="text-xl font-bold text-gray-700">📊 Parameter Trends</h2>
-            {data ? (
-              <div className="grid md:grid-cols-2 gap-6">
-                {["pH", "TDS", "Hardness", "Nitrate"].map((param) => (
-                  <div key={param} className={cardClasses}>
-                    <h3 className="text-lg font-semibold mb-2 text-gray-600">{param}</h3>
-                    <div className="w-full h-64">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart
-                          data={buildChartData(
-                            data[param.toLowerCase()],
-                            data.safety_ranges[param]
-                          )}
-                        >
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="name" />
-                          <YAxis />
-                          <Tooltip />
-                          <Legend />
-                          <Line
-                            type="monotone"
-                            dataKey="value"
-                            stroke="#8884d8"
-                            strokeWidth={3}
-                          />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="text-gray-600">⚠️ Please fetch report first.</p>
-            )}
-          </div>
-        )}
-
-        {/* TAB 3: ELEMENTS */}
-        {activeTab === "elements" && (
-          <div className={cardClasses}>
-            <h2 className="text-xl font-bold mb-4 text-gray-700">
-              ⚗️ Detected Elements & Explanations
-            </h2>
-            {data && data.elements.length > 0 ? (
-              <ul className="list-disc pl-6 space-y-2 text-gray-700">
-                {data.elements.map((el, idx) => (
-                  <li key={idx} className="bg-red-50 p-2 rounded-lg">
-                    <span className="font-semibold text-red-700">{el}:</span> This element is a radioactive contaminant that can cause severe health issues and requires immediate attention.
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="text-gray-600 bg-green-50 p-4 rounded-lg">
-                ✅ No unusual radioactive elements detected.
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* TAB 4: REPORT */}
-        {activeTab === "report" && (
-          <div className={cardClasses}>
-            <h2 className="text-xl font-bold mb-4 text-gray-700">📧 Generate & Send Report</h2>
-            {data ? (
-              <div>
-                <pre className="bg-gray-200 p-4 rounded-lg mb-4 text-sm whitespace-pre-wrap break-all text-gray-800">
-                  {JSON.stringify(data, null, 2)}
-                </pre>
-                <p className="mb-4 text-gray-700">
-                  The report will be automatically sent to the NGO email.
-                </p>
-                <button disabled className={`${buttonClasses} bg-green-500 opacity-50`}>
-                  Report Sent ✅
-                </button>
-              </div>
-            ) : (
-              <p className="text-gray-600">⚠️ Fetch report first.</p>
-            )}
-          </div>
-        )}
+        <div style="width:320px;min-width:260px;">
+          <h4 style="margin:0;color:var(--accent)">Risk Gauge</h4>
+          <canvas id="gaugeChart"></canvas>
+        </div>
       </div>
-    </div>
-  );
-}
+
+      <!-- Manual Input (collapsed by default) -->
+      <div id="manualPanel" class="card" style="display:none; margin-top:14px;">
+        <h4 style="margin-top:0;color:var(--gold)">Manual Input (for judges)</h4>
+        <label>Location</label>
+        <input id="m_location" placeholder="Location (e.g., Chennai)">
+        <label>pH (real unit 0–14)</label>
+        <input id="m_ph" type="number" step="0.01" min="0" max="14" placeholder="7.2">
+        <label>TDS (mg/L)</label>
+        <input id="m_tds" type="number" step="0.1" min="0" placeholder="480">
+        <label>Hardness (mg/L)</label>
+        <input id="m_hardness" type="number" step="0.1" min="0" placeholder="180">
+        <label>Nitrate (mg/L)</label>
+        <input id="m_nitrate" type="number" step="0.1" min="0" placeholder="20">
+        <div style="margin-top:10px;">
+          <button class="btn" id="manualSubmit">Submit Manual</button>
+          <button class="btn ghost" id="manualClear">Clear</button>
+        </div>
+        <div id="manualStatus" style="margin-top:8px;color:var(--muted)"></div>
+      </div>
+    </section>
+
+    <!-- GRAPHS (2x2 line charts) -->
+    <section id="graphs" class="tab-panel">
+      <h3 style="color:var(--gold);margin-top:0">Parameter Comparison (Measured vs WHO safe)</h3>
+      <div class="grid-2x2">
+        <div class="card">
+          <h4 style="margin:0;color:var(--accent)">pH</h4>
+          <canvas id="chartPh"></canvas>
+        </div>
+        <div class="card">
+          <h4 style="margin:0;color:var(--accent)">TDS (mg/L)</h4>
+          <canvas id="chartTds"></canvas>
+        </div>
+        <div class="card">
+          <h4 style="margin:0;color:var(--accent)">Hardness (mg/L)</h4>
+          <canvas id="chartHardness"></canvas>
+        </div>
+        <div class="card">
+          <h4 style="margin:0;color:var(--accent)">Nitrate (mg/L)</h4>
+          <canvas id="chartNitrate"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- AWARENESS -->
+    <section id="awareness" class="tab-panel">
+      <h3 style="color:var(--gold);margin-top:0">Radioactive Elements & Treatments</h3>
+
+      <div class="element-card">
+        <h4 style="margin:0;color:var(--accent)">☢️ Uranium</h4>
+        <p style="margin:6px 0;color:var(--muted)">Appears more in acidic water (pH &lt; 6.5) or very hard water. <strong>Treatment:</strong> Reverse Osmosis (RO) / Ion exchange.</p>
+      </div>
+
+      <div class="element-card">
+        <h4 style="margin:0;color:var(--accent)">☢️ Radium</h4>
+        <p style="margin:6px 0;color:var(--muted)">Soluble in alkaline soft water (pH &gt; 7.5 and low hardness). <strong>Treatment:</strong> Lime softening / Ion exchange.</p>
+      </div>
+
+      <div class="element-card">
+        <h4 style="margin:0;color:var(--accent)">☢️ Cesium</h4>
+        <p style="margin:6px 0;color:var(--muted)">More mobile with high nitrate and high TDS. <strong>Treatment:</strong> Zeolite filtration / RO.</p>
+      </div>
+    </section>
+
+    <!-- REPORT -->
+    <section id="report" class="tab-panel">
+      <h3 style="color:var(--gold);margin-top:0">Send Report to NGO</h3>
+      <div class="card">
+        <label>Preview (latest data)</label>
+        <pre id="reportPreview">No data yet</pre>
+
+        <label>Extra notes (optional)</label>
+        <textarea id="reportNotes" placeholder="Add message to NGO..."></textarea>
+        <div style="margin-top:10px;">
+          <button class="btn" id="sendReportBtn">Send Report</button>
+          <span id="sendStatus" style="margin-left:12px;color:var(--muted)"></span>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <footer>RAWP • Demo build</footer>
+
+<script>
+(() => {
+  const apiBase = "https://rawp.onrender.com"; // <- keep this if your backend lives here
+  // If your backend is on a different URL, change this
+
+  // UI refs
+  const tabs = document.querySelectorAll('.tab-btn');
+  const panels = document.querySelectorAll('.tab-panel');
+  const latestBlock = document.getElementById('latestBlock');
+  const errorBox = document.getElementById('errorBox');
+  const refreshNow = document.getElementById('refreshNow');
+  const toggleManual = document.getElementById('toggleManual');
+  const manualPanel = document.getElementById('manualPanel');
+  const manualSubmit = document.getElementById('manualSubmit');
+  const manualClear = document.getElementById('manualClear');
+  const manualStatus = document.getElementById('manualStatus');
+  const reportPreview = document.getElementById('reportPreview');
+  const sendReportBtn = document.getElementById('sendReportBtn');
+  const sendStatus = document.getElementById('sendStatus');
+
+  // Charts
+  let gaugeChart=null, phChart=null, tdsChart=null, hardnessChart=null, nitrateChart=null;
+
+  // WHO ranges (real units)
+  const WHO = {
+    ph: [6.5,8.5],
+    tds: [0,500],
+    hardness: [0,200],
+    nitrate: [0,45]
+  };
+
+  // Tab handling
+  tabs.forEach(b=>{
+    b.addEventListener('click', ()=> {
+      tabs.forEach(x=>x.classList.remove('active'));
+      b.classList.add('active');
+      const tab = b.dataset.tab;
+      panels.forEach(p=>p.classList.remove('active'));
+      document.getElementById(tab).classList.add('active');
+      // when graphs tab opened re-render charts (if data loaded)
+      if(tab==='graphs') {
+        // no-op; fetchLatest already updates charts
+      }
+    });
+  });
+
+  // toggle manual input
+  toggleManual.addEventListener('click', ()=> {
+    manualPanel.style.display = manualPanel.style.display === 'none' ? 'block' : 'none';
+  });
+
+  // fetch latest and render
+  async function fetchLatest(){
+    errorBox.textContent = "";
+    try{
+      const r = await fetch(apiBase + '/latest');
+      if(!r.ok) throw new Error('Bad response: ' + r.status);
+      const data = await r.json();
+
+      // some backends use nested keys; try both styles
+      const ph = data.ph ?? data.pH ?? data.scaled_inputs?.ph ?? data.data?.ph ?? data.data?.pH;
+      const tds = data.tds ?? data.TDS ?? data.scaled_inputs?.tds ?? data.data?.tds;
+      const hardness = data.hardness ?? data.hardness ?? data.scaled_inputs?.hardness ?? data.data?.hardness;
+      const nitrate = data.nitrate ?? data.Nitrate ?? data.scaled_inputs?.nitrate ?? data.data?.nitrate;
+      const risk = data.risk_score ?? data.risk ?? data.data?.risk_score ?? data.data?.risk_score ?? data.data?.risk;
+      const element = data.element ?? data.element_detected ?? data.data?.element ?? data.data?.element_detected ?? data.elements?.[0] ?? "None";
+      const status = data.status ?? data.data?.status ?? (risk>60 ? "High" : (risk>30? "Moderate":"Safe"));
+      const location = data.location ?? data.data?.location ?? data.data?.location ?? "Unknown";
+
+      const latest = { ph: Number(ph)||0, tds: Number(tds)||0, hardness: Number(hardness)||0, nitrate: Number(nitrate)||0, risk_score: Number(risk)||0, element, status, location };
+
+      // update UI
+      latestBlock.innerHTML = `
+        <div><strong>Location:</strong> ${latest.location}</div>
+        <div><strong>pH:</strong> ${latest.ph}</div>
+        <div><strong>TDS:</strong> ${latest.tds} mg/L</div>
+        <div><strong>Hardness:</strong> ${latest.hardness} mg/L</div>
+        <div><strong>Nitrate:</strong> ${latest.nitrate} mg/L</div>
+        <div style="margin-top:8px;"><strong>Risk:</strong> ${latest.risk_score} · ${latest.status}</div>
+        <div><strong>Detected:</strong> ${latest.element}</div>
+      `;
+      reportPreview.textContent = JSON.stringify(latest, null, 2);
+
+      renderGauge(latest.risk_score);
+      renderComparisonCharts(latest);
+    } catch(err){
+      console.error(err);
+      errorBox.textContent = "Error fetching latest: " + (err.message || err);
+      latestBlock.textContent = "No data available";
+    }
+  }
+
+  // Gauge Chart (doughnut)
+  function renderGauge(score){
+    const ctx = document.getElementById('gaugeChart').getContext('2d');
+    if(gaugeChart) gaugeChart.destroy();
+    gaugeChart = new Chart(ctx, {
+      type: 'doughnut',
+      data: { datasets:[{ data:[score, 100-score], backgroundColor:[ score>=60? '#ff5555' : score>=30? '#ffb84d' : '#39ff14' ] }] },
+      options: { cutout: '70%', plugins:{ legend:{display:false}, tooltip:{enabled:false} } }
+    });
+  }
+
+  // 2x2 line charts (Measured vs WHO)
+  function renderComparisonCharts(latest){
+    // helper to build dataset for Chart.js line chart (three points)
+    function buildSeries(measured, safeMin, safeMax){
+      return {
+        labels: ['Safe Min','Measured','Safe Max'],
+        datasets: [{
+          label:'Value',
+          data:[safeMin, measured, safeMax],
+          fill:false,
+          borderColor:'#39ff14',
+          backgroundColor:'#39ff14',
+          tension:0.3,
+          pointRadius:5
+        }]
+      };
+    }
+
+    // destroy old charts
+    if(phChart) phChart.destroy();
+    if(tdsChart) tdsChart.destroy();
+    if(hardnessChart) hardnessChart.destroy();
+    if(nitrateChart) nitrateChart.destroy();
+
+    // pH
+    phChart = new Chart(document.getElementById('chartPh').getContext('2d'), {
+      type:'line',
+      data: buildSeries(latest.ph, WHO.ph[0], WHO.ph[1]),
+      options: { scales:{ y:{ beginAtZero:false } }, plugins:{ legend:{display:false} } }
+    });
+
+    // TDS
+    tdsChart = new Chart(document.getElementById('chartTds').getContext('2d'), {
+      type:'line',
+      data: buildSeries(latest.tds, WHO.tds[0], WHO.tds[1]),
+      options: { scales:{ y:{ beginAtZero:true } }, plugins:{ legend:{display:false} } }
+    });
+
+    // Hardness
+    hardnessChart = new Chart(document.getElementById('chartHardness').getContext('2d'), {
+      type:'line',
+      data: buildSeries(latest.hardness, WHO.hardness[0], WHO.hardness[1]),
+      options: { scales:{ y:{ beginAtZero:true } }, plugins:{ legend:{display:false} } }
+    });
+
+    // Nitrate
+    nitrateChart = new Chart(document.getElementById('chartNitrate').getContext('2d'), {
+      type:'line',
+      data: buildSeries(latest.nitrate, WHO.nitrate[0], WHO.nitrate[1]),
+      options: { scales:{ y:{ beginAtZero:true } }, plugins:{ legend:{display:false} } }
+    });
+  }
+
+  // Manual submit
+  manualSubmit.addEventListener('click', async ()=>{
+    manualStatus.textContent = "";
+    const payload = {
+      location: document.getElementById('m_location').value || undefined,
+      ph: parseFloat(document.getElementById('m_ph').value)||undefined,
+      tds: parseFloat(document.getElementById('m_tds').value)||undefined,
+      hardness: parseFloat(document.getElementById('m_hardness').value)||undefined,
+      nitrate: parseFloat(document.getElementById('m_nitrate').value)||undefined
+    };
+    try{
+      const r = await fetch(apiBase + '/manual_input', {
+        method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload)
+      });
+      const j = await r.json();
+      manualStatus.textContent = j.message || 'Updated';
+      fetchLatest();
+    }catch(err){
+      manualStatus.textContent = 'Manual submit error: ' + err.message;
+    }
+  });
+
+  manualClear.addEventListener('click', ()=>{
+    ['m_location','m_ph','m_tds','m_hardness','m_nitrate'].forEach(id=>document.getElementById(id).value='');
+    manualStatus.textContent = '';
+  });
+
+  // send report
+  sendReportBtn.addEventListener('click', async ()=>{
+    sendStatus.textContent = 'Sending...';
+    const notes = document.getElementById('reportNotes').value || '';
+    try{
+      const r = await fetch(apiBase + '/send_report', {
+        method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ notes })
+      });
+      const j = await r.json();
+      sendStatus.textContent = j.message || JSON.stringify(j);
+    }catch(err){
+      sendStatus.textContent = 'Send error: ' + err.message;
+    }
+  });
+
+  // refresh button
+  refreshNow.addEventListener('click', ()=>fetchLatest());
+
+  // initial load
+  fetchLatest();
+  // periodic refresh
+  setInterval(fetchLatest, 10000);
+
+})();
+</script>
+</body>
+</html>
