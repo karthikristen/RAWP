@@ -2,131 +2,126 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>💧☢️ RAWP - Radioactive Water Predicter</title>
+  <title>💧☢️ RAWP - Radioactive Water Predictor</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    body { background:#0a0a0a; color:#e8f5e9; font-family: 'Bebas Neue', sans-serif; text-align:center; }
-    h1 { color:#FFD300; text-shadow:0 0 10px #FFD300; }
-    .container { width:70%; margin:auto; padding:20px; }
-    input, textarea { padding:8px; margin:6px; width:80%; border-radius:6px; }
-    button { padding:10px 20px; margin:10px; background:#FFD300; border:none; border-radius:6px; font-weight:bold; cursor:pointer; }
-    #gauge-container { width:300px; margin:auto; }
-    canvas { margin:20px auto; }
+    body { background:#0a0a0a; color:#e8f5e9; font-family:sans-serif; text-align:center; }
+    h1 { color:#FFD300; }
+    .tabs { display:flex; justify-content:center; margin:20px; }
+    .tab { padding:10px 20px; margin:5px; background:#333; border-radius:8px; cursor:pointer; }
+    .tab.active { background:#FFD300; color:black; font-weight:bold; }
+    .content { display:none; }
+    .content.active { display:block; }
     .box { background:#111; padding:15px; border-radius:12px; margin:10px; }
+    input, textarea { margin:8px; padding:8px; width:70%; border-radius:6px; }
+    button { padding:10px; margin:10px; border:none; border-radius:6px; background:#FFD300; font-weight:bold; }
+    canvas { margin:20px auto; }
   </style>
 </head>
 <body>
   <h1>💧☢️ RAWP</h1>
-  <p>Radioactive Water Predicter</p>
+  <div class="tabs">
+    <div class="tab active" onclick="showTab(0)">Manual Input</div>
+    <div class="tab" onclick="showTab(1)">ESP Sensor</div>
+    <div class="tab" onclick="showTab(2)">Report</div>
+  </div>
 
-  <div class="container">
-    <!-- Water Form -->
-    <form id="waterForm">
-      <input type="number" step="0.1" name="ph" placeholder="pH (0–100 scale)" required><br>
-      <input type="number" step="0.1" name="tds" placeholder="TDS (0–100 scale)" required><br>
-      <input type="number" step="0.1" name="hardness" placeholder="Hardness (0–100 scale)" required><br>
-      <input type="number" step="0.1" name="nitrate" placeholder="Nitrate (0–100 scale)" required><br>
+  <!-- Manual Input -->
+  <div class="content active">
+    <form id="manualForm">
+      <input type="number" name="ph" placeholder="pH (0–100)" required><br>
+      <input type="number" name="tds" placeholder="TDS (0–100)" required><br>
+      <input type="number" name="hardness" placeholder="Hardness (0–100)" required><br>
+      <input type="number" name="nitrate" placeholder="Nitrate (0–100)" required><br>
       <input type="text" name="location" placeholder="Location"><br>
-      <textarea name="notes" placeholder="Extra Notes..."></textarea><br>
+      <textarea name="notes" placeholder="Notes..."></textarea><br>
       <button type="submit">Run Analysis</button>
     </form>
+    <div id="manualResult" class="box"></div>
+    <canvas id="manualGauge"></canvas>
+    <canvas id="manualBar"></canvas>
+  </div>
 
-    <div id="result" class="box"></div>
+  <!-- ESP Sensor -->
+  <div class="content">
+    <form id="espForm">
+      <input type="number" name="tds" placeholder="Enter ESP TDS Value" required><br>
+      <button type="submit">Fetch ESP Data</button>
+    </form>
+    <div id="espResult" class="box"></div>
+    <canvas id="espGauge"></canvas>
+    <canvas id="espBar"></canvas>
+  </div>
 
-    <!-- Gauge -->
-    <div id="gauge-container">
-      <canvas id="gauge"></canvas>
-    </div>
-
-    <!-- Bar Chart -->
-    <div id="barChartContainer">
-      <canvas id="barChart"></canvas>
-    </div>
-
-    <!-- Send Email -->
-    <div class="box">
-      <textarea id="reportText" placeholder="Write custom report here..."></textarea><br>
-      <button id="sendReport">📧 Send Report Email</button>
-      <p id="emailStatus"></p>
-    </div>
+  <!-- Report -->
+  <div class="content">
+    <div id="reportBox" class="box">No report yet.</div>
+    <button onclick="sendEmail()">📧 Send Report</button>
+    <div id="emailStatus"></div>
   </div>
 
   <script>
     const backend = "https://rawp.onrender.com";
+    let lastReport = "";
 
-    // Handle water form submit
-    document.getElementById("waterForm").addEventListener("submit", async (e) => {
+    function showTab(i){
+      document.querySelectorAll('.tab').forEach((t,j)=>t.classList.toggle("active", i===j));
+      document.querySelectorAll('.content').forEach((c,j)=>c.classList.toggle("active", i===j));
+    }
+
+    function renderResult(data, resultDiv, gaugeId, barId){
+      resultDiv.innerHTML = `<h3>${data.status}</h3>
+        <p>Risk Score: ${data.risk_score}</p>
+        <p><b>Detected:</b> ${data.detected_elements.length ? data.detected_elements.join(", ") : "None"}</p>
+        <p><b>Treatment:</b> ${data.treatments.join(", ")}</p>`;
+
+      lastReport = data.report || "No report generated.";
+
+      new Chart(document.getElementById(gaugeId), {
+        type:"doughnut",
+        data:{ datasets:[{ data:[data.risk_score, 100-data.risk_score], backgroundColor:["red","gray"] }] },
+        options:{ cutout:"80%", plugins:{legend:{display:false}} }
+      });
+
+      new Chart(document.getElementById(barId), {
+        type:"bar",
+        data:{
+          labels:["pH","TDS","Hardness","Nitrate"],
+          datasets:[{ label:"Values", data:[
+            data.scaled_inputs.ph, data.scaled_inputs.tds,
+            data.scaled_inputs.hardness, data.scaled_inputs.nitrate
+          ], backgroundColor:"orange"}]
+        }
+      });
+    }
+
+    document.getElementById("manualForm").addEventListener("submit", async e=>{
       e.preventDefault();
       const formData = new FormData(e.target);
+      const res = await fetch(`${backend}/submit`, {method:"POST", body:formData});
+      const data = await res.json();
+      renderResult(data, document.getElementById("manualResult"), "manualGauge", "manualBar");
+      document.getElementById("reportBox").innerText = data.report;
+    });
 
+    document.getElementById("espForm").addEventListener("submit", async e=>{
+      e.preventDefault();
+      const formData = new FormData(e.target);
+      const res = await fetch(`${backend}/esp`, {method:"POST", body:formData});
+      const data = await res.json();
+      renderResult(data, document.getElementById("espResult"), "espGauge", "espBar");
+      document.getElementById("reportBox").innerText = data.report || "ESP Data fetched (no email report)";
+    });
+
+    async function sendEmail(){
+      if(!lastReport){ document.getElementById("emailStatus").innerText="No report to send"; return; }
       const res = await fetch(`${backend}/submit`, {
-        method: "POST",
-        body: formData
+        method:"POST",
+        body:new URLSearchParams({ph:50,tds:50,hardness:50,nitrate:50,location:"Report",notes:lastReport})
       });
-
       const data = await res.json();
-
-      // Show results
-      document.getElementById("result").innerHTML = `
-        <h3>${data.status}</h3>
-        <p>Risk Score: ${data.risk_score}</p>
-        <p><b>Detected Elements:</b> ${data.detected_elements.length ? data.detected_elements.join(", ") : "None"}</p>
-        <p><b>Treatment:</b> ${data.treatments.join(", ")}</p>
-        <p><b>Email Status:</b> ${data.email_status.message}</p>
-      `;
-
-      // Gauge chart
-      new Chart(document.getElementById("gauge"), {
-        type: 'doughnut',
-        data: {
-          datasets: [{
-            data: [data.risk_score, 100 - data.risk_score],
-            backgroundColor: ["red", "gray"]
-          }]
-        },
-        options: {
-          cutout: "80%",
-          plugins: { legend: { display: false } }
-        }
-      });
-
-      // Bar chart
-      new Chart(document.getElementById("barChart"), {
-        type: 'bar',
-        data: {
-          labels: ["pH","TDS","Hardness","Nitrate"],
-          datasets: [{
-            label: "Your Values",
-            data: [
-              data.scaled_inputs.ph,
-              data.scaled_inputs.tds,
-              data.scaled_inputs.hardness,
-              data.scaled_inputs.nitrate
-            ],
-            backgroundColor: "orange"
-          }]
-        }
-      });
-    });
-
-    // Handle send report button
-    document.getElementById("sendReport").addEventListener("click", async () => {
-      const report = document.getElementById("reportText").value;
-
-      if (!report.trim()) {
-        document.getElementById("emailStatus").innerText = "⚠️ Please write something before sending.";
-        return;
-      }
-
-      const res = await fetch(`${backend}/send_report`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ report })
-      });
-
-      const data = await res.json();
-      document.getElementById("emailStatus").innerText = data.message || "Something went wrong.";
-    });
+      document.getElementById("emailStatus").innerText = data.email_status.message;
+    }
   </script>
 </body>
 </html>
