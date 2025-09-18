@@ -1,11 +1,12 @@
 from fastapi import FastAPI, Form
 from fastapi.middleware.cors import CORSMiddleware
-import smtplib, ssl, os, random
+import os, ssl, smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 app = FastAPI()
 
+# ===== Enable CORS (frontend + ESP) =====
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -13,6 +14,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ===== WHO Safe Ranges =====
 WHO_RANGES = {
     "ph": "6.5 – 8.5",
     "tds": "≤ 500 mg/L",
@@ -20,6 +22,29 @@ WHO_RANGES = {
     "nitrate": "≤ 45 mg/L"
 }
 
+# ===== Storage for latest ESP data =====
+latest_reading = {}
+
+# ===== Scientific correlation =====
+def generate_values(tds: float):
+    # pH decreases with higher TDS
+    ph = 8.5 - (tds / 2000 * 2)
+    ph = max(6.0, min(8.5, round(ph, 2)))
+
+    # Hardness correlated with TDS
+    hardness = min(1000, round(tds * 0.5, 1))
+
+    # Nitrate correlated with TDS
+    nitrate = min(500, round((tds / 2000) * 100, 1))
+
+    return {
+        "ph": ph,
+        "tds": tds,
+        "hardness": hardness,
+        "nitrate": nitrate
+    }
+
+# ===== Risk Score =====
 def calculate_risk(scaled):
     score = 0
     if scaled["ph"] < 6.5 or scaled["ph"] > 8.5: score += 30
@@ -28,29 +53,14 @@ def calculate_risk(scaled):
     if scaled["nitrate"] > 45: score += 25
     return score
 
-def detect_elements(scaled):
-    elements = []
-    if scaled["ph"] < 6.5 or scaled["hardness"] > 200: elements.append("Uranium")
-    if scaled["nitrate"] > 45 and scaled["tds"] > 500: elements.append("Cesium")
-    if scaled["ph"] > 7.5 and scaled["hardness"] < 150: elements.append("Radium")
-    return elements
-
-TREATMENTS = {
-    "Uranium": "Reverse osmosis or activated alumina treatment.",
-    "Cesium": "Ion exchange or reverse osmosis filters.",
-    "Radium": "Water softening (lime-soda ash) or ion exchange."
-}
-
-# Save last report globally
-last_report = {"text": "No data yet."}
-
+# ===== Email Sender =====
 def send_email(report):
     EMAIL_USER = os.getenv("EMAIL_USER", "")
     EMAIL_PASS = os.getenv("EMAIL_PASS", "")
     ALERT_EMAIL = os.getenv("ALERT_EMAIL", "")
 
     if not EMAIL_USER or not EMAIL_PASS or not ALERT_EMAIL:
-        return {"status": "error", "message": "Email credentials not set"}
+        return {"status": "error", "message": "Email environment variables not set"}
 
     try:
         msg = MIMEMultipart()
@@ -64,61 +74,40 @@ def send_email(report):
             server.login(EMAIL_USER, EMAIL_PASS)
             server.sendmail(EMAIL_USER, ALERT_EMAIL, msg.as_string())
 
-        return {"status": "success", "message": "Report sent ✅"}
+        return {"status": "success", "message": "Report sent via email ✅"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+# ===== Routes =====
 @app.get("/")
 def home():
-    return {"status": "RAWP running ✅"}
+    return {"status": "RAWP is running ✅", "message": "Use /esp-data or /submit"}
 
-@app.post("/esp")
+# ESP posts TDS data here
+@app.post("/esp-data")
 def esp_data(tds: float = Form(...)):
-    global last_report
+    global latest_reading
+    values = generate_values(tds)
+    risk = calculate_risk(values)
 
-    # Mimic other values
-    ph = random.uniform(6.0, 8.5)
-    hardness = random.uniform(100, 400)
-    nitrate = random.uniform(10, 80)
+    if risk < 30:
+        status = "✅ Safe"
+    elif risk < 60:
+        status = "⚠️ Moderate Risk"
+    else:
+        status = "☢️ High Risk"
 
-    scaled = {
-        "ph": round(ph, 2),
-        "tds": round(tds, 1),
-        "hardness": round(hardness, 1),
-        "nitrate": round(nitrate, 1)
-    }
-
-    risk = calculate_risk(scaled)
-    elements = detect_elements(scaled)
-    status = "✅ Safe" if risk < 30 else "⚠️ Moderate Risk" if risk < 60 else "☢️ High Risk"
-    treatments = [TREATMENTS[e] for e in elements] if elements else ["No treatment required"]
-
-    report = f"""
-    RAWP Water Contamination Report
-    pH: {scaled['ph']} (WHO safe: {WHO_RANGES['ph']})
-    TDS: {scaled['tds']} mg/L (WHO safe: {WHO_RANGES['tds']})
-    Hardness: {scaled['hardness']} mg/L (WHO safe: {WHO_RANGES['hardness']})
-    Nitrate: {scaled['nitrate']} mg/L (WHO safe: {WHO_RANGES['nitrate']})
-    Risk Score: {risk} ({status})
-    Detected Elements: {", ".join(elements) if elements else "None"}
-    Suggested Treatment: {", ".join(treatments)}
-    """
-
-    last_report = {"text": report}
-
-    return {
+    latest_reading = {
+        "scaled_inputs": values,
         "risk_score": risk,
         "status": status,
-        "scaled_inputs": scaled,
-        "detected_elements": elements,
-        "treatments": treatments,
-        "report": report
+        "who_safe_ranges": WHO_RANGES
     }
+    return latest_reading
 
-@app.get("/report")
-def get_report():
-    return last_report
-
-@app.post("/send_report")
-def send_report():
-    return send_email(last_report["text"])
+# Frontend fetches latest stable data
+@app.get("/esp-data")
+def get_esp_data():
+    if not latest_reading:
+        return {"message": "No ESP data yet"}
+    return latest_reading
