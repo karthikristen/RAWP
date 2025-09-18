@@ -2,215 +2,181 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>💧☢️ Radioactive Water Predicter (R.A.W.P)</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <title>💧☢️ Radio Active Water Predicter (R.A.W.P)</title>
+  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
   <style>
     body {
-      background-color: #0a0a0a;
-      color: #e8f5e9;
       font-family: Arial, sans-serif;
+      background: #0a0a0a;
+      color: #e8f5e9;
       text-align: center;
+      margin: 0;
+      padding: 0;
     }
     h1 {
       color: #FFD300;
-      font-size: 48px;
+      font-size: 40px;
+      margin: 10px 0;
       text-shadow: 0 0 10px #FFD300, 0 0 20px #FF7518;
     }
-    h2 {
-      color: #39FF14;
-      text-shadow: 0 0 8px #39FF14;
-    }
     .tabs {
-      margin: 20px;
+      display: flex;
+      justify-content: center;
+      margin: 15px 0;
     }
     .tab {
-      display: inline-block;
-      padding: 12px 20px;
-      margin: 5px;
+      background: #101010;
+      color: #39FF14;
+      padding: 10px 20px;
+      margin: 0 5px;
+      border-radius: 10px;
       cursor: pointer;
-      border-radius: 8px;
-      background: #111;
-      color: #FFD300;
     }
-    .tab:hover { background: #222; }
-    .active { background: #FFD300; color: black; }
-    .tab-content { display: none; margin-top: 20px; }
-    .show { display: block; }
-    input {
-      width: 90%;
-      padding: 10px;
-      margin: 10px 0;
-      border-radius: 8px;
-      border: none;
-      outline: none;
-    }
-    button {
+    .tab.active {
       background: linear-gradient(90deg, #FFD300, #FF7518);
       color: black;
-      font-size: 18px;
-      padding: 12px 20px;
+    }
+    .tabcontent {
+      display: none;
+      padding: 20px;
+    }
+    .tabcontent.active {
+      display: block;
+    }
+    input, button {
+      margin: 5px;
+      padding: 8px;
+      border-radius: 8px;
       border: none;
-      border-radius: 10px;
+    }
+    button {
+      background: #39FF14;
+      color: black;
+      font-weight: bold;
       cursor: pointer;
-      margin-top: 10px;
     }
-    button:hover { transform: scale(1.05); }
-    .result {
-      margin-top: 20px;
+    button:hover {
+      background: #FFD300;
+    }
+    .card {
+      background: #111;
+      border-radius: 12px;
       padding: 15px;
-      border-radius: 10px;
-      font-size: 20px;
+      margin: 15px auto;
+      width: 80%;
+      box-shadow: 0 0 15px rgba(255, 211, 0, 0.2);
     }
-    .safe { background: #003300; color: #39FF14; }
-    .moderate { background: #332b00; color: yellow; }
-    .danger { background: #330000; color: red; }
   </style>
 </head>
 <body>
-  <h1>💧☢️ Radioactive Water Predicter</h1>
-  <h2>AI/ML Powered Water Safety | Developed by Karthikeyan</h2>
 
-  <!-- Tabs -->
+  <h1>💧☢️ Radio Active Water Predicter (R.A.W.P)</h1>
+  <p>AI-Powered Water Safety Screening</p>
+
   <div class="tabs">
-    <span class="tab active" onclick="openTab('analysis')">🔍 Analysis</span>
-    <span class="tab" onclick="openTab('dashboard')">📊 Dashboard</span>
-    <span class="tab" onclick="openTab('awareness')">📚 Awareness</span>
+    <div class="tab active" onclick="openTab(0)">🔬 Contamination Check</div>
+    <div class="tab" onclick="openTab(1)">📊 Safety Meter</div>
+    <div class="tab" onclick="openTab(2)">⚠️ Radioactive Awareness</div>
   </div>
 
-  <!-- Analysis Tab -->
-  <div id="analysis" class="tab-content show">
-    <div class="container">
-      <h3>Enter Water Parameters</h3>
-      <input type="number" id="ph" placeholder="pH Level (0-14)" step="0.1">
-      <input type="number" id="tds" placeholder="TDS (mg/L)">
-      <input type="number" id="hardness" placeholder="Hardness (mg/L)">
-      <input type="number" id="nitrate" placeholder="Nitrate (mg/L)">
-      <input type="text" id="location" placeholder="📍 Location">
-      <button onclick="analyze()">Run Analysis</button>
-      <div id="result" class="result"></div>
-    </div>
+  <!-- Tab 1 -->
+  <div id="tab0" class="tabcontent active">
+    <h2>Enter Water Parameters</h2>
+    <input id="ph" type="number" step="0.1" placeholder="pH (0–14)">
+    <input id="tds" type="number" placeholder="TDS (mg/L)">
+    <input id="hardness" type="number" placeholder="Hardness (mg/L)">
+    <input id="nitrate" type="number" placeholder="Nitrate (mg/L)">
+    <input id="location" type="text" placeholder="📍 Location">
+    <br>
+    <button onclick="analyze()">Run Analysis</button>
+    <div id="result"></div>
+    <div id="gauge"></div>
   </div>
 
-  <!-- Dashboard Tab -->
-  <div id="dashboard" class="tab-content">
-    <h3>📊 Risk Score Dashboard</h3>
-    <canvas id="gaugeChart" width="300" height="300"></canvas>
-    <canvas id="barChart" width="400" height="300"></canvas>
+  <!-- Tab 2 -->
+  <div id="tab1" class="tabcontent">
+    <h2>Safe vs Unsafe Water Levels</h2>
+    <div id="safetyDetails"></div>
   </div>
 
-  <!-- Awareness Tab -->
-  <div id="awareness" class="tab-content">
-    <h3>📚 Awareness & Treatment</h3>
-    <div id="awarenessContent" style="max-width: 600px; margin:auto; text-align:left;"></div>
+  <!-- Tab 3 -->
+  <div id="tab2" class="tabcontent">
+    <h2>Radioactive Element Insights</h2>
+    <div id="awareness"></div>
   </div>
 
   <script>
     let lastResult = null;
 
-    // Tab switch
-    function openTab(tabId) {
-      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('show'));
-      document.getElementById(tabId).classList.add('show');
-      event.target.classList.add('active');
-
-      if (tabId === "dashboard" && lastResult) renderCharts(lastResult);
-      if (tabId === "awareness" && lastResult) renderAwareness(lastResult);
+    function openTab(i) {
+      document.querySelectorAll('.tab').forEach((t, idx) => {
+        t.classList.toggle("active", idx === i);
+        document.getElementById("tab" + idx).classList.toggle("active", idx === i);
+      });
     }
 
     async function analyze() {
-      const ph = document.getElementById("ph").value;
-      const tds = document.getElementById("tds").value;
-      const hardness = document.getElementById("hardness").value;
-      const nitrate = document.getElementById("nitrate").value;
-      const location = document.getElementById("location").value;
+      const data = {
+        ph: parseFloat(document.getElementById("ph").value),
+        tds: parseFloat(document.getElementById("tds").value),
+        hardness: parseFloat(document.getElementById("hardness").value),
+        nitrate: parseFloat(document.getElementById("nitrate").value),
+        location: document.getElementById("location").value
+      };
 
-      const data = { ph, tds, hardness, nitrate, location };
+      const res = await fetch("https://rawp.onrender.com/submit", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(data)
+      });
 
-      try {
-        const res = await fetch("https://rawp.onrender.com/submit", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(data)
-        });
+      lastResult = await res.json();
 
-        const result = await res.json();
-        lastResult = result;
+      document.getElementById("result").innerHTML = `
+        <div class="card">
+          <p><b>Status:</b> ${lastResult.status}</p>
+          <p><b>Risk Score:</b> ${lastResult.risk_score}</p>
+          <p><b>Element Detected:</b> ${lastResult.element_detected}</p>
+          <p><b>Treatment:</b> ${lastResult.treatment}</p>
+        </div>
+      `;
 
-        let statusClass = "safe";
-        if (result.status.includes("Moderate")) statusClass = "moderate";
-        if (result.status.includes("High")) statusClass = "danger";
-
-        document.getElementById("result").className = "result " + statusClass;
-        document.getElementById("result").innerHTML = `
-          <b>📍 Location:</b> ${result.location}<br>
-          <b>💧 TDS:</b> ${result.tds}<br>
-          <b>⚗️ pH:</b> ${result.ph}<br>
-          <b>🧪 Nitrate:</b> ${result.nitrate}<br>
-          <b>🪨 Hardness:</b> ${result.hardness}<br><br>
-          <b>Risk Score:</b> ${result.risk_score}<br>
-          <b>Status:</b> ${result.status}
-        `;
-      } catch (e) {
-        document.getElementById("result").className = "result danger";
-        document.getElementById("result").innerText = "❌ Error connecting to RAWP backend.";
-      }
-    }
-
-    // Gauge + Bar Chart
-    function renderCharts(result) {
-      const ctxGauge = document.getElementById("gaugeChart").getContext("2d");
-      new Chart(ctxGauge, {
-        type: "doughnut",
-        data: {
-          datasets: [{
-            data: [result.risk_score, 100 - result.risk_score],
-            backgroundColor: ["red", "#333"],
-            borderWidth: 0
-          }]
-        },
-        options: {
-          circumference: 180,
-          rotation: 270,
-          cutout: "70%",
-          plugins: { legend: { display: false } }
+      // Gauge
+      var gaugeData = [{
+        type: "indicator",
+        mode: "gauge+number",
+        value: lastResult.risk_score,
+        gauge: {
+          axis: { range: [0, 100] },
+          bar: { color: lastResult.risk_score >= 70 ? "red" : (lastResult.risk_score >= 30 ? "orange" : "green") },
+          steps: [
+            { range: [0, 30], color: "green" },
+            { range: [30, 70], color: "yellow" },
+            { range: [70, 100], color: "red" }
+          ]
         }
-      });
-
-      const ctxBar = document.getElementById("barChart").getContext("2d");
-      new Chart(ctxBar, {
-        type: "bar",
-        data: {
-          labels: ["pH", "TDS", "Hardness", "Nitrate"],
-          datasets: [{
-            label: "Values",
-            data: [result.ph, result.tds, result.hardness, result.nitrate],
-            backgroundColor: ["#39FF14", "#FFD300", "#FF7518", "red"]
-          }]
-        },
-        options: { responsive: true, plugins: { legend: { display: false } } }
-      });
+      }];
+      Plotly.newPlot("gauge", gaugeData);
     }
 
-    // Awareness Section
-    function renderAwareness(result) {
+    // Awareness Tab
+    setInterval(() => {
+      if (!lastResult) return;
       let info = "";
-      if (result.nitrate > 50) {
-        info += `<p>🧪 <b>High Nitrate:</b> Can cause Blue Baby Syndrome. <br>👉 Treatment: Reverse Osmosis, Ion Exchange.</p>`;
+      if (lastResult.element_detected === "Uranium") {
+        info = "☢️ Uranium: Dissolves in acidic/very hard water. 👉 Treatment: " + lastResult.treatment;
+      } else if (lastResult.element_detected === "Cesium") {
+        info = "☢️ Cesium: Increases with nitrate + high TDS. 👉 Treatment: " + lastResult.treatment;
+      } else if (lastResult.element_detected === "Radium") {
+        info = "☢️ Radium: Soluble in alkaline, low-hardness water. 👉 Treatment: " + lastResult.treatment;
+      } else if (lastResult.element_detected === "Strontium") {
+        info = "☢️ Strontium: Replaces calcium in bones. 👉 Treatment: " + lastResult.treatment;
+      } else {
+        info = "✅ No radioactive element detected.";
       }
-      if (result.hardness > 300) {
-        info += `<p>🪨 <b>High Hardness:</b> Causes scaling and kidney risk. <br>👉 Treatment: Water Softener, Lime Softening.</p>`;
-      }
-      if (result.tds > 500) {
-        info += `<p>💧 <b>High TDS:</b> Indicates dissolved salts/metals. <br>👉 Treatment: RO filtration, Activated Carbon.</p>`;
-      }
-      if (result.ph < 6.5 || result.ph > 8.5) {
-        info += `<p>⚗️ <b>Abnormal pH:</b> Corrosive or alkaline water. <br>👉 Treatment: Neutralization Filters.</p>`;
-      }
-      if (info === "") info = "<p>✅ Your water parameters are within WHO safe limits.</p>";
-
-      document.getElementById("awarenessContent").innerHTML = info;
-    }
+      document.getElementById("awareness").innerHTML = `<div class="card">${info}</div>`;
+    }, 2000);
   </script>
+
 </body>
 </html>
