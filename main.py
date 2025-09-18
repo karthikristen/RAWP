@@ -1,144 +1,151 @@
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-import random, os, smtplib
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import random
+import os
+import smtplib
 from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
-app = FastAPI()
+app = Flask(__name__)
+CORS(app)
 
-# Enable CORS so frontend can connect
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Global storage for latest readings
+# --------------------
+# Global storage
+# --------------------
 latest_data = {
-    "tds": 0,
+    "location": "CHENNAI",
+    "tds": 50,
     "ph": 7.0,
-    "hardness": 100,
-    "nitrate": 10,
+    "hardness": 120,
+    "nitrate": 30,
     "risk_score": 0,
-    "element": "None",
-    "status": "Safe",
-    "location": "CHENNAI"
+    "element": "Safe"
 }
 
-# WHO safe ranges
-SAFE_RANGES = {
-    "pH": "6.5 – 8.5",
-    "TDS": "< 500 mg/L",
-    "Hardness": "< 200 mg/L",
-    "Nitrate": "< 45 mg/L"
+# --------------------
+# WHO Safe Ranges
+# --------------------
+SAFE_LIMITS = {
+    "ph": (6.5, 8.5),
+    "tds": (0, 500),
+    "hardness": (0, 200),
+    "nitrate": (0, 45)
 }
 
-def calculate_risk(ph, tds, hardness, nitrate):
-    # Normalize deviations (0-100 scale)
-    ph_dev = max(0, abs(ph - 7.5) * 20)  # deviation from neutral
-    tds_dev = max(0, (tds - 500) / 5)
-    hard_dev = max(0, (hardness - 200) / 2)
-    nit_dev = max(0, (nitrate - 45) * 2)
+# --------------------
+# Email Config
+# --------------------
+EMAIL_USER = os.getenv("EMAIL_USER")
+EMAIL_PASS = os.getenv("EMAIL_PASS")
+ALERT_EMAIL = os.getenv("ALERT_EMAIL")
 
-    # Weighted sum
-    risk = 0.3 * ph_dev + 0.25 * tds_dev + 0.2 * hard_dev + 0.25 * nit_dev
-    risk = min(100, round(risk, 2))
 
-    # Determine element
-    element = "None"
-    if ph < 6.5 or hardness > 200:
+def calculate_risk(data):
+    """Calculate risk score and detected element"""
+    score = 0
+    element = "Safe"
+
+    if not SAFE_LIMITS["ph"][0] <= data["ph"] <= SAFE_LIMITS["ph"][1]:
+        score += 15
+    if data["tds"] > SAFE_LIMITS["tds"][1]:
+        score += 10
+        element = "Cesium"
+    if data["hardness"] > SAFE_LIMITS["hardness"][1]:
+        score += 10
         element = "Uranium"
-    elif ph > 7.5 and hardness < 150:
-        element = "Radium"
-    elif nitrate > 40 and tds > 600:
+    if data["nitrate"] > SAFE_LIMITS["nitrate"][1]:
+        score += 10
         element = "Cesium"
 
-    # Risk status
-    if risk < 30:
-        status = "✅ Safe"
-    elif risk < 60:
-        status = "⚠️ Moderate Risk"
-    else:
-        status = "☢️ High Risk"
+    data["risk_score"] = score
+    data["element"] = element
+    return data
 
-    return risk, element, status
 
-@app.get("/")
-async def root():
-    return {"status": "RAWP is running ✅", "message": "Send water data to /submit"}
-
-@app.post("/submit")
-async def submit_data(request: Request):
-    global latest_data
-    data = await request.json()
-
-    # ESP sends only TDS
-    tds = float(data.get("tds", random.uniform(50, 700)))
-
-    # Mimic other parameters
-    ph = random.uniform(6.0, 9.0)
-    hardness = random.uniform(50, 400)
-    nitrate = random.uniform(5, 100)
-
-    risk, element, status = calculate_risk(ph, tds, hardness, nitrate)
-
-    latest_data = {
-        "tds": round(tds, 2),
-        "ph": round(ph, 2),
-        "hardness": round(hardness, 2),
-        "nitrate": round(nitrate, 2),
-        "risk_score": risk,
-        "element": element,
-        "status": status,
-        "location": data.get("location", "CHENNAI")
-    }
-    return {"message": "Data received", "data": latest_data}
-
-@app.get("/latest")
-async def get_latest():
-    return latest_data
-
-@app.post("/send_report")
-async def send_report(request: Request):
-    data = await request.json()
-    notes = data.get("notes", "")
-
-    sender = os.getenv("EMAIL_USER")
-    password = os.getenv("EMAIL_PASS")
-    recipient = os.getenv("ALERT_EMAIL")
-
-    body = f"""
-🚨 RAWP Alert: Water Report for {latest_data['location']}
-
-📍 Location: {latest_data['location']}
-💧 TDS: {latest_data['tds']} mg/L
-⚗️ pH: {latest_data['ph']}
-🧪 Nitrate: {latest_data['nitrate']} mg/L
-🪨 Hardness: {latest_data['hardness']} mg/L
-
-✅ Risk Score: {latest_data['risk_score']}
-☢️ Detected Element: {latest_data['element']}
-⚠️ Status: {latest_data['status']}
-
-📝 Notes: {notes if notes else "No additional notes"}
-
-📖 WHO Safe Ranges:
-- pH: {SAFE_RANGES['pH']}
-- TDS: {SAFE_RANGES['TDS']}
-- Hardness: {SAFE_RANGES['Hardness']}
-- Nitrate: {SAFE_RANGES['Nitrate']}
-"""
-
-    msg = MIMEText(body)
-    msg["Subject"] = f"RAWP – Water Quality Report ({latest_data['location']})"
-    msg["From"] = sender
-    msg["To"] = recipient
-
+def send_email_report(data, notes=""):
+    """Send email with latest report"""
     try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-            server.login(sender, password)
-            server.sendmail(sender, recipient, msg.as_string())
-        return {"message": "✅ Report sent successfully via Email!"}
+        msg = MIMEMultipart()
+        msg["From"] = EMAIL_USER
+        msg["To"] = ALERT_EMAIL
+        msg["Subject"] = f"🚨 RAWP Alert: Water Report for {data['location']}"
+
+        body = f"""
+        Water Report from RAWP:
+
+        📍 Location: {data['location']}
+        💧 TDS: {data['tds']}
+        ⚗️ pH: {data['ph']}
+        🧪 Nitrate: {data['nitrate']}
+        🪨 Hardness: {data['hardness']}
+
+        ✅ Risk Score: {data['risk_score']}
+        ⚠️ Status: {data['element']}
+
+        Notes: {notes}
+        """
+
+        msg.attach(MIMEText(body, "plain"))
+
+        server = smtplib.SMTP("smtp.gmail.com", 587)
+        server.starttls()
+        server.login(EMAIL_USER, EMAIL_PASS)
+        server.sendmail(EMAIL_USER, ALERT_EMAIL, msg.as_string())
+        server.quit()
+        return True
     except Exception as e:
-        return {"message": f"❌ Error sending email: {e}"}
+        print("❌ Email error:", e)
+        return False
+
+
+# --------------------
+# Routes
+# --------------------
+
+@app.route("/latest", methods=["GET"])
+def get_latest():
+    return jsonify(latest_data)
+
+
+@app.route("/esp", methods=["POST"])
+def from_esp():
+    """ESP sends only TDS, backend generates others"""
+    global latest_data
+    content = request.json
+    tds_value = float(content.get("tds", 50))
+
+    latest_data["tds"] = tds_value
+    latest_data["ph"] = round(random.uniform(6.0, 9.0), 2)
+    latest_data["hardness"] = random.randint(50, 300)
+    latest_data["nitrate"] = random.randint(10, 100)
+
+    latest_data = calculate_risk(latest_data)
+    return jsonify({"message": "ESP data updated", "data": latest_data})
+
+
+@app.route("/manual_input", methods=["POST"])
+def manual_input():
+    """Manual data entry (used in frontend tab)"""
+    global latest_data
+    content = request.json
+    latest_data["tds"] = float(content.get("tds", latest_data["tds"]))
+    latest_data["ph"] = float(content.get("ph", latest_data["ph"]))
+    latest_data["hardness"] = float(content.get("hardness", latest_data["hardness"]))
+    latest_data["nitrate"] = float(content.get("nitrate", latest_data["nitrate"]))
+    latest_data["location"] = content.get("location", latest_data["location"])
+
+    latest_data = calculate_risk(latest_data)
+    return jsonify({"message": "Manual input updated", "data": latest_data})
+
+
+@app.route("/send_report", methods=["POST"])
+def send_report():
+    global latest_data
+    content = request.json
+    notes = content.get("notes", "")
+    success = send_email_report(latest_data, notes)
+    return jsonify({"message": "✅ Report sent!" if success else "❌ Failed to send"})
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000)
