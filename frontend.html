@@ -2,126 +2,77 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>💧☢️ RAWP - Radioactive Water Predictor</title>
+  <title>RAWP Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    body { background:#0a0a0a; color:#e8f5e9; font-family:sans-serif; text-align:center; }
-    h1 { color:#FFD300; }
-    .tabs { display:flex; justify-content:center; margin:20px; }
-    .tab { padding:10px 20px; margin:5px; background:#333; border-radius:8px; cursor:pointer; }
-    .tab.active { background:#FFD300; color:black; font-weight:bold; }
-    .content { display:none; }
-    .content.active { display:block; }
-    .box { background:#111; padding:15px; border-radius:12px; margin:10px; }
-    input, textarea { margin:8px; padding:8px; width:70%; border-radius:6px; }
-    button { padding:10px; margin:10px; border:none; border-radius:6px; background:#FFD300; font-weight:bold; }
-    canvas { margin:20px auto; }
+    body{background:#0a0a0a;color:#e8f5e9;font-family:sans-serif;text-align:center;}
+    h1{color:#FFD300;}
+    .box{background:#111;padding:15px;border-radius:12px;margin:10px;}
+    button{padding:10px;margin:10px;border:none;border-radius:6px;background:#FFD300;font-weight:bold;}
+    canvas{margin:20px auto;}
   </style>
 </head>
 <body>
-  <h1>💧☢️ RAWP</h1>
-  <div class="tabs">
-    <div class="tab active" onclick="showTab(0)">Manual Input</div>
-    <div class="tab" onclick="showTab(1)">ESP Sensor</div>
-    <div class="tab" onclick="showTab(2)">Report</div>
-  </div>
-
-  <!-- Manual Input -->
-  <div class="content active">
-    <form id="manualForm">
-      <input type="number" name="ph" placeholder="pH (0–100)" required><br>
-      <input type="number" name="tds" placeholder="TDS (0–100)" required><br>
-      <input type="number" name="hardness" placeholder="Hardness (0–100)" required><br>
-      <input type="number" name="nitrate" placeholder="Nitrate (0–100)" required><br>
-      <input type="text" name="location" placeholder="Location"><br>
-      <textarea name="notes" placeholder="Notes..."></textarea><br>
-      <button type="submit">Run Analysis</button>
-    </form>
-    <div id="manualResult" class="box"></div>
-    <canvas id="manualGauge"></canvas>
-    <canvas id="manualBar"></canvas>
-  </div>
-
-  <!-- ESP Sensor -->
-  <div class="content">
-    <form id="espForm">
-      <input type="number" name="tds" placeholder="Enter ESP TDS Value" required><br>
-      <button type="submit">Fetch ESP Data</button>
-    </form>
-    <div id="espResult" class="box"></div>
-    <canvas id="espGauge"></canvas>
-    <canvas id="espBar"></canvas>
-  </div>
-
-  <!-- Report -->
-  <div class="content">
-    <div id="reportBox" class="box">No report yet.</div>
-    <button onclick="sendEmail()">📧 Send Report</button>
-    <div id="emailStatus"></div>
-  </div>
+  <h1>💧☢️ RAWP Dashboard</h1>
+  <div id="result" class="box">Waiting for ESP data...</div>
+  <canvas id="gauge"></canvas>
+  <canvas id="bar"></canvas>
+  <button onclick="sendReport()">📧 Send Report</button>
+  <div id="emailStatus"></div>
 
   <script>
     const backend = "https://rawp.onrender.com";
-    let lastReport = "";
+    let gaugeChart, barChart;
 
-    function showTab(i){
-      document.querySelectorAll('.tab').forEach((t,j)=>t.classList.toggle("active", i===j));
-      document.querySelectorAll('.content').forEach((c,j)=>c.classList.toggle("active", i===j));
+    async function fetchESP(){
+      try{
+        const formData = new FormData();
+        // Example: ESP only gives TDS → here we mimic a TDS stream (replace with real ESP value)
+        formData.append("tds", Math.floor(Math.random()*1000));
+        const res = await fetch(`${backend}/esp`, {method:"POST", body:formData});
+        const data = await res.json();
+
+        document.getElementById("result").innerHTML = `
+          <h3>${data.status}</h3>
+          <p>Risk Score: ${data.risk_score}</p>
+          <p><b>pH:</b> ${data.scaled_inputs.ph}</p>
+          <p><b>TDS:</b> ${data.scaled_inputs.tds}</p>
+          <p><b>Hardness:</b> ${data.scaled_inputs.hardness}</p>
+          <p><b>Nitrate:</b> ${data.scaled_inputs.nitrate}</p>
+          <p><b>Detected:</b> ${data.detected_elements.length ? data.detected_elements.join(", ") : "None"}</p>
+        `;
+
+        if(gaugeChart) gaugeChart.destroy();
+        gaugeChart = new Chart(document.getElementById("gauge"), {
+          type:"doughnut",
+          data:{datasets:[{data:[data.risk_score,100-data.risk_score],backgroundColor:["red","gray"]}]},
+          options:{cutout:"80%",plugins:{legend:{display:false}}}
+        });
+
+        if(barChart) barChart.destroy();
+        barChart = new Chart(document.getElementById("bar"), {
+          type:"bar",
+          data:{
+            labels:["pH","TDS","Hardness","Nitrate"],
+            datasets:[{label:"Values",data:[
+              data.scaled_inputs.ph,data.scaled_inputs.tds,
+              data.scaled_inputs.hardness,data.scaled_inputs.nitrate
+            ],backgroundColor:"orange"}]
+          }
+        });
+
+      }catch(err){
+        console.log(err);
+      }
     }
 
-    function renderResult(data, resultDiv, gaugeId, barId){
-      resultDiv.innerHTML = `<h3>${data.status}</h3>
-        <p>Risk Score: ${data.risk_score}</p>
-        <p><b>Detected:</b> ${data.detected_elements.length ? data.detected_elements.join(", ") : "None"}</p>
-        <p><b>Treatment:</b> ${data.treatments.join(", ")}</p>`;
-
-      lastReport = data.report || "No report generated.";
-
-      new Chart(document.getElementById(gaugeId), {
-        type:"doughnut",
-        data:{ datasets:[{ data:[data.risk_score, 100-data.risk_score], backgroundColor:["red","gray"] }] },
-        options:{ cutout:"80%", plugins:{legend:{display:false}} }
-      });
-
-      new Chart(document.getElementById(barId), {
-        type:"bar",
-        data:{
-          labels:["pH","TDS","Hardness","Nitrate"],
-          datasets:[{ label:"Values", data:[
-            data.scaled_inputs.ph, data.scaled_inputs.tds,
-            data.scaled_inputs.hardness, data.scaled_inputs.nitrate
-          ], backgroundColor:"orange"}]
-        }
-      });
+    async function sendReport(){
+      const res = await fetch(`${backend}/send_report`, {method:"POST"});
+      const data = await res.json();
+      document.getElementById("emailStatus").innerText = data.message;
     }
 
-    document.getElementById("manualForm").addEventListener("submit", async e=>{
-      e.preventDefault();
-      const formData = new FormData(e.target);
-      const res = await fetch(`${backend}/submit`, {method:"POST", body:formData});
-      const data = await res.json();
-      renderResult(data, document.getElementById("manualResult"), "manualGauge", "manualBar");
-      document.getElementById("reportBox").innerText = data.report;
-    });
-
-    document.getElementById("espForm").addEventListener("submit", async e=>{
-      e.preventDefault();
-      const formData = new FormData(e.target);
-      const res = await fetch(`${backend}/esp`, {method:"POST", body:formData});
-      const data = await res.json();
-      renderResult(data, document.getElementById("espResult"), "espGauge", "espBar");
-      document.getElementById("reportBox").innerText = data.report || "ESP Data fetched (no email report)";
-    });
-
-    async function sendEmail(){
-      if(!lastReport){ document.getElementById("emailStatus").innerText="No report to send"; return; }
-      const res = await fetch(`${backend}/submit`, {
-        method:"POST",
-        body:new URLSearchParams({ph:50,tds:50,hardness:50,nitrate:50,location:"Report",notes:lastReport})
-      });
-      const data = await res.json();
-      document.getElementById("emailStatus").innerText = data.email_status.message;
-    }
+    setInterval(fetchESP, 5000); // fetch every 5 sec
   </script>
 </body>
 </html>
