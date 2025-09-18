@@ -1,121 +1,169 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-import os
+from fastapi import FastAPI, Form
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 import smtplib
 from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+import os
 import random
 
-app = Flask(__name__)
-CORS(app)
+app = FastAPI()
 
-# WHO safety ranges (for display + calculation)
-SAFETY_RANGES = {
+# Allow frontend to connect
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# -------------------------
+# Safety ranges (WHO)
+# -------------------------
+SAFE_RANGES = {
     "pH": (6.5, 8.5),
-    "TDS": (0, 100),       # scaled down from WHO <500
-    "Hardness": (0, 100),  # scaled down from WHO <200
-    "Nitrate": (0, 100),   # scaled down from WHO <45
+    "TDS": (0, 100),       # scaled for your ESP demo
+    "Hardness": (0, 100),  # scaled for demo
+    "Nitrate": (0, 100),   # scaled for demo
 }
 
-def calculate_risk(ph, tds, hardness, nitrate):
-    # normalize deviation (0–100 scale)
-    def deviation(val, low, high):
-        if low <= val <= high:
-            return 0
-        if val < low:
-            return min(100, (low - val) * 10)
-        return min(100, (val - high) * 10)
+# -------------------------
+# Store last data
+# -------------------------
+latest_data = {}
 
-    ph_dev = deviation(ph, *SAFETY_RANGES["pH"])
-    tds_dev = deviation(tds, *SAFETY_RANGES["TDS"])
-    hardness_dev = deviation(hardness, *SAFETY_RANGES["Hardness"])
-    nitrate_dev = deviation(nitrate, *SAFETY_RANGES["Nitrate"])
+# -------------------------
+# ESP data model
+# -------------------------
+class ESPData(BaseModel):
+    tds: float
 
-    score = 0.3*ph_dev + 0.25*tds_dev + 0.2*hardness_dev + 0.25*nitrate_dev
-    if score < 30:
-        status = "✅ Safe"
-    elif score < 60:
-        status = "⚠️ Moderate Risk"
-    else:
-        status = "🚨 High Risk"
-    return round(score, 2), status
+@app.get("/")
+def home():
+    return {"status": "RAWP running ✅", "message": "Use /submit (ESP) or /manual_input (frontend)"}
 
-def detect_elements(ph, tds, hardness, nitrate):
-    elements = []
-    if ph < 6.5 or hardness > 80:
-        elements.append("Uranium (soluble in acidic / hard water)")
-    if nitrate > 40 or tds > 80:
-        elements.append("Cesium (mobile with high nitrates & salts)")
-    if ph > 7.5 and hardness < 50:
-        elements.append("Radium (soluble in alkaline soft water)")
-    return elements
+# -------------------------
+# ESP will call this
+# -------------------------
+@app.post("/submit")
+def submit(data: ESPData):
+    global latest_data
 
-def send_email(location, ph, tds, hardness, nitrate, score, status):
-    sender = os.getenv("EMAIL_USER")
+    # ESP sends only TDS → backend generates rest
+    tds = data.tds
+    ph = round(random.uniform(6.0, 9.0), 2)
+    hardness = round(random.uniform(20, 90), 2)
+    nitrate = round(random.uniform(5, 80), 2)
+
+    risk = calculate_risk(ph, tds, hardness, nitrate)
+    elements = detect_elements(ph, tds, hardness, nitrate)
+
+    latest_data = {
+        "pH": ph,
+        "TDS": tds,
+        "Hardness": hardness,
+        "Nitrate": nitrate,
+        "RiskScore": risk,
+        "Elements": elements
+    }
+
+    return {"message": "Data received from ESP ✅", "data": latest_data}
+
+# -------------------------
+# Manual input (judges demo)
+# -------------------------
+@app.post("/manual_input")
+def manual_input(
+    ph: float = Form(...),
+    tds: float = Form(...),
+    hardness: float = Form(...),
+    nitrate: float = Form(...),
+):
+    global latest_data
+
+    risk = calculate_risk(ph, tds, hardness, nitrate)
+    elements = detect_elements(ph, tds, hardness, nitrate)
+
+    latest_data = {
+        "pH": ph,
+        "TDS": tds,
+        "Hardness": hardness,
+        "Nitrate": nitrate,
+        "RiskScore": risk,
+        "Elements": elements
+    }
+
+    return {"message": "Manual data received ✅", "data": latest_data}
+
+@app.get("/latest")
+def get_latest():
+    if not latest_data:
+        return {"message": "No data yet"}
+    return latest_data
+
+# -------------------------
+# Email report
+# -------------------------
+@app.post("/send_report")
+def send_report():
+    if not latest_data:
+        return {"error": "No data to send"}
+
+    user = os.getenv("EMAIL_USER")
     password = os.getenv("EMAIL_PASS")
-    receiver = os.getenv("ALERT_EMAIL")
+    to_email = os.getenv("ALERT_EMAIL")
 
-    subject = f"🚨 RAWP Alert: Water Report for {location}"
+    subject = "🚨 RAWP Alert: Water Report"
     body = f"""
     Water Report from RAWP:
 
-    📍 Location: {location}
-    💧 TDS: {tds}
-    ⚗️ pH: {ph}
-    🧪 Nitrate: {nitrate}
-    🪨 Hardness: {hardness}
+    💧 TDS: {latest_data['TDS']}
+    ⚗️ pH: {latest_data['pH']}
+    🧪 Nitrate: {latest_data['Nitrate']}
+    🪨 Hardness: {latest_data['Hardness']}
 
-    ✅ Risk Score: {score}
-    ⚠️ Status: {status}
+    ✅ Risk Score: {latest_data['RiskScore']}
+    ⚠️ Elements Detected: {', '.join(latest_data['Elements']) if latest_data['Elements'] else 'None'}
+
+    Safety Ranges (WHO):
+    - pH: 6.5–8.5
+    - TDS: 0–100 (demo scaled)
+    - Hardness: 0–100 (demo scaled)
+    - Nitrate: 0–100 (demo scaled)
     """
 
-    msg = MIMEMultipart()
-    msg["From"] = sender
-    msg["To"] = receiver
-    msg["Subject"] = subject
-    msg.attach(MIMEText(body, "plain"))
-
     try:
+        msg = MIMEText(body)
+        msg["From"] = user
+        msg["To"] = to_email
+        msg["Subject"] = subject
+
         with smtplib.SMTP("smtp.gmail.com", 587) as server:
             server.starttls()
-            server.login(sender, password)
-            server.sendmail(sender, receiver, msg.as_string())
-        return True
+            server.login(user, password)
+            server.sendmail(user, to_email, msg.as_string())
+
+        return {"status": "Report sent successfully ✅"}
     except Exception as e:
-        print("❌ Email error:", e)
-        return False
+        return {"error": str(e)}
 
-@app.route("/")
-def home():
-    return jsonify({"status": "RAWP running ✅", "message": "Use /submit to send water data"})
+# -------------------------
+# Risk & element detection
+# -------------------------
+def calculate_risk(ph, tds, hardness, nitrate):
+    ph_dev = max(0, abs(ph - 7.5) * 15)
+    tds_dev = max(0, (tds - SAFE_RANGES["TDS"][1]) * 2 if tds > SAFE_RANGES["TDS"][1] else 0)
+    hardness_dev = max(0, (hardness - SAFE_RANGES["Hardness"][1]) * 2 if hardness > SAFE_RANGES["Hardness"][1] else 0)
+    nitrate_dev = max(0, (nitrate - SAFE_RANGES["Nitrate"][1]) * 2 if nitrate > SAFE_RANGES["Nitrate"][1] else 0)
 
-@app.route("/submit", methods=["POST"])
-def submit():
-    data = request.json
+    risk = 0.3 * ph_dev + 0.25 * tds_dev + 0.2 * hardness_dev + 0.25 * nitrate_dev
+    return round(min(risk, 100), 2)
 
-    # ESP sends only TDS → mimic other values
-    tds = float(data.get("tds", random.uniform(10, 80)))
-    ph = float(data.get("ph", random.uniform(6.0, 9.0)))
-    hardness = float(data.get("hardness", random.uniform(10, 90)))
-    nitrate = float(data.get("nitrate", random.uniform(5, 90)))
-    location = data.get("location", "Unknown")
-
-    score, status = calculate_risk(ph, tds, hardness, nitrate)
-    elements = detect_elements(ph, tds, hardness, nitrate)
-
-    send_email(location, ph, tds, hardness, nitrate, score, status)
-
-    return jsonify({
-        "location": location,
-        "ph": ph,
-        "tds": tds,
-        "hardness": hardness,
-        "nitrate": nitrate,
-        "risk_score": score,
-        "status": status,
-        "elements": elements,
-        "safety_ranges": SAFETY_RANGES
-    })
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+def detect_elements(ph, tds, hardness, nitrate):
+    elements = []
+    if ph < 6.5 or hardness > 70:
+        elements.append("Uranium")
+    if nitrate > 60 and tds > 70:
+        elements.append("Cesium")
+    if ph > 7.5 and hardness < 40:
+        elements.append("Radium")
+    return elements
