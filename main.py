@@ -1,93 +1,91 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import math
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import random
 
 app = FastAPI()
 
+# Enable CORS for frontend + ESP
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # allow all for testing, restrict later
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Email Config (set in Render Environment Variables)
+SENDER_EMAIL = "your_email@gmail.com"
+SENDER_PASS = "your_app_password"
+RECEIVER_EMAIL = "ngo_email@example.com"  # NGO or recipient
+
+# Input Data Model
 class WaterData(BaseModel):
+    location: str
     ph: float
     tds: float
     hardness: float
     nitrate: float
-    location: str
 
-def calculate_risk(ph, tds, hardness, nitrate):
-    # --- Normalize each parameter deviation ---
-    # pH deviation (6.5–8.5 safe range)
-    if 6.5 <= ph <= 8.5:
-        ph_dev = 0
-    else:
-        ph_dev = abs(ph - 7.5) * 10  # exaggerated scale
-    ph_dev = min(ph_dev, 100)
+# Function: Calculate Risk Score
+def calculate_risk(data: WaterData):
+    # Normalized deviations (0–100 scale)
+    ph_dev = 0 if 6.5 <= data.ph <= 8.5 else min(100, abs(data.ph - 7.5) * 20)
+    tds_dev = min(100, max(0, data.tds - 500) / 5)
+    hard_dev = min(100, max(0, data.hardness - 200) / 2)
+    nit_dev = min(100, max(0, data.nitrate - 45) * 2)
 
-    # TDS deviation (safe < 500)
-    tds_dev = max(0, (tds - 500) / 5)
-    tds_dev = min(tds_dev, 100)
-
-    # Hardness deviation (safe < 200)
-    hard_dev = max(0, (hardness - 200) / 2)
-    hard_dev = min(hard_dev, 100)
-
-    # Nitrate deviation (safe < 45)
-    nit_dev = max(0, (nitrate - 45) * 2)
-    nit_dev = min(nit_dev, 100)
-
-    # --- Weighted risk score ---
-    score = (
+    # Weighted risk formula
+    risk_score = (
         0.3 * ph_dev +
         0.25 * tds_dev +
         0.2 * hard_dev +
         0.25 * nit_dev
     )
 
-    return round(min(score, 100), 2)
+    # Element detection
+    element = "None"
+    if data.ph < 6.5 or data.hardness > 200:
+        element = "Uranium"
+    elif data.nitrate > 40 and data.tds > 600:
+        element = "Cesium"
+    elif data.ph > 7.5 and data.hardness < 150:
+        element = "Radium"
 
-def detect_element(ph, tds, hardness, nitrate):
-    """
-    Based on correlations from WHO + UNSCEAR reports
-    """
-    if ph < 6.5 or hardness > 200:
-        return "Uranium"
-    elif nitrate > 40 and tds > 600:
-        return "Cesium"
-    elif ph > 7.5 and hardness < 150:
-        return "Radium"
-    elif nitrate > 50 and hardness > 180:
-        return "Strontium"
-    else:
-        return "None"
+    status = "⚠️ Unsafe" if risk_score > 50 else "✅ Safe"
 
+    return round(risk_score, 2), status, element
+
+# Function: Send Email
+def send_alert_email(location, risk_score, report):
+    try:
+        msg = MIMEMultipart()
+        msg["From"] = SENDER_EMAIL
+        msg["To"] = RECEIVER_EMAIL
+        msg["Subject"] = f"Water Quality Report - {location}"
+
+        msg.attach(MIMEText(report, "plain"))
+
+        with smtplib.SMTP("smtp.gmail.com", 587) as server:
+            server.starttls()
+            server.login(SENDER_EMAIL, SENDER_PASS)
+            server.send_message(msg)
+
+        print("✅ Email sent successfully")
+    except Exception as e:
+        print(f"❌ Error sending email: {e}")
+
+# Routes
 @app.get("/")
-def root():
-    return {"status": "RAWP backend running ✅", "message": "Send POST to /submit"}
+def home():
+    return {"status": "RAWP is running ✅", "message": "Send water data to /submit or /esp-submit"}
 
 @app.post("/submit")
 def submit(data: WaterData):
-    # Step 1: Calculate risk score
-    risk_score = calculate_risk(data.ph, data.tds, data.hardness, data.nitrate)
-
-    # Step 2: Define risk status
-    if risk_score < 30:
-        status = "✅ Safe"
-    elif risk_score < 70:
-        status = "⚠️ Moderate Risk"
-    else:
-        status = "☢️ High Risk"
-
-    # Step 3: Predict radioactive element
-    element = detect_element(data.ph, data.tds, data.hardness, data.nitrate)
-
-    # Step 4: Treatment suggestions
-    treatment = "None"
-    if element == "Uranium":
-        treatment = "Reverse Osmosis, Activated Alumina"
-    elif element == "Cesium":
-        treatment = "Reverse Osmosis + Special Ion Exchange Resins"
-    elif element == "Radium":
-        treatment = "Ion Exchange, Reverse Osmosis"
-    elif element == "Strontium":
-        treatment = "Lime Softening, Reverse Osmosis"
-
+    risk_score, status, element = calculate_risk(data)
     return {
         "location": data.location,
         "ph": data.ph,
@@ -96,6 +94,58 @@ def submit(data: WaterData):
         "nitrate": data.nitrate,
         "risk_score": risk_score,
         "status": status,
-        "element_detected": element,
-        "treatment": treatment
+        "element_detected": element
+    }
+
+@app.post("/send-report")
+def send_report(data: dict):
+    notes = data.get("notes", "")
+    report = f"""
+📄 Water Quality Report
+----------------------------
+Location: {data.get('location')}
+pH: {data.get('ph')}
+TDS: {data.get('tds')} mg/L
+Hardness: {data.get('hardness')} mg/L
+Nitrate: {data.get('nitrate')} mg/L
+Risk Score: {data.get('risk_score')}
+Status: {data.get('status')}
+Element Detected: {data.get('element_detected')}
+
+Notes: {notes}
+    """
+
+    send_alert_email(data.get("location", "Unknown"), data.get("risk_score", 0), report)
+    return {"message": "Report sent"}
+
+# New ESP route (sends only TDS, backend mimics rest)
+@app.post("/esp-submit")
+def esp_submit(data: dict):
+    location = data.get("location", "Unknown")
+    tds = float(data.get("tds", 0))
+
+    # Mimic missing values
+    ph = round(random.uniform(6.0, 8.5), 2)
+    hardness = round(random.uniform(100, 250), 2)
+    nitrate = round(random.uniform(20, 60), 2)
+
+    fake_data = WaterData(
+        location=location,
+        ph=ph,
+        tds=tds,
+        hardness=hardness,
+        nitrate=nitrate
+    )
+
+    risk_score, status, element = calculate_risk(fake_data)
+
+    return {
+        "location": location,
+        "ph": ph,
+        "tds": tds,
+        "hardness": hardness,
+        "nitrate": nitrate,
+        "risk_score": risk_score,
+        "status": status,
+        "element_detected": element
     }
