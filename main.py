@@ -1,6 +1,6 @@
-from fastapi import FastAPI, Form
+from fastapi import FastAPI, Form, Request
 from fastapi.middleware.cors import CORSMiddleware
-import smtplib, ssl, os, random
+import smtplib, ssl, os
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
@@ -22,9 +22,20 @@ WHO_RANGES = {
     "nitrate": "≤ 45 mg/L"
 }
 
+# ===== Convert scaled (0–100) inputs into real-world units =====
+def scale_inputs(ph_in, tds_in, hardness_in, nitrate_in):
+    return {
+        "ph": round((ph_in / 100) * 14, 2),
+        "tds": round((tds_in / 100) * 2000, 1),
+        "hardness": round((hardness_in / 100) * 1000, 1),
+        "nitrate": round((nitrate_in / 100) * 500, 1)
+    }
+
 # ===== Calculate Risk Score =====
-def calculate_risk(ph, tds, hardness, nitrate):
+def calculate_risk(scaled):
     score = 0
+    ph, tds, hardness, nitrate = scaled["ph"], scaled["tds"], scaled["hardness"], scaled["nitrate"]
+
     if ph < 6.5 or ph > 8.5:
         score += 30
     if tds > 500:
@@ -33,17 +44,21 @@ def calculate_risk(ph, tds, hardness, nitrate):
         score += 20
     if nitrate > 45:
         score += 25
+
     return score
 
 # ===== Detect Radioactive Elements =====
-def detect_elements(ph, tds, hardness, nitrate):
+def detect_elements(scaled):
     elements = []
+    ph, tds, hardness, nitrate = scaled["ph"], scaled["tds"], scaled["hardness"], scaled["nitrate"]
+
     if ph < 6.5 or hardness > 200:
         elements.append("Uranium")
     if nitrate > 45 and tds > 500:
         elements.append("Cesium")
     if ph > 7.5 and hardness < 150:
         elements.append("Radium")
+
     return elements
 
 # ===== Treatment Suggestions =====
@@ -81,7 +96,7 @@ def send_email(report):
 # ===== Routes =====
 @app.get("/")
 def home():
-    return {"status": "RAWP is running ✅", "message": "Use /submit or /esp_data"}
+    return {"status": "RAWP is running ✅", "message": "Send water data to /submit"}
 
 @app.post("/submit")
 def submit_data(
@@ -92,43 +107,9 @@ def submit_data(
     location: str = Form("Unknown"),
     notes: str = Form("")
 ):
-    risk = calculate_risk(ph, tds, hardness, nitrate)
-    elements = detect_elements(ph, tds, hardness, nitrate)
-
-    if risk < 30:
-        status = "✅ Safe"
-    elif risk < 60:
-        status = "⚠️ Moderate Risk"
-    else:
-        status = "☢️ High Risk"
-
-    treatments = [TREATMENTS[e] for e in elements] if elements else ["No treatment required"]
-
-    return {
-        "risk_score": risk,
-        "status": status,
-        "inputs": {
-            "ph": ph,
-            "tds": tds,
-            "hardness": hardness,
-            "nitrate": nitrate
-        },
-        "who_safe_ranges": WHO_RANGES,
-        "detected_elements": elements,
-        "treatments": treatments
-    }
-
-@app.post("/send_report")
-def send_report(
-    ph: float = Form(...),
-    tds: float = Form(...),
-    hardness: float = Form(...),
-    nitrate: float = Form(...),
-    location: str = Form("Unknown"),
-    notes: str = Form("")
-):
-    risk = calculate_risk(ph, tds, hardness, nitrate)
-    elements = detect_elements(ph, tds, hardness, nitrate)
+    scaled = scale_inputs(ph, tds, hardness, nitrate)
+    risk = calculate_risk(scaled)
+    elements = detect_elements(scaled)
 
     if risk < 30:
         status = "✅ Safe"
@@ -145,10 +126,10 @@ def send_report(
     Location: {location}
 
     Parameters:
-    pH: {ph} (WHO safe: {WHO_RANGES['ph']})
-    TDS: {tds} mg/L (WHO safe: {WHO_RANGES['tds']})
-    Hardness: {hardness} mg/L (WHO safe: {WHO_RANGES['hardness']})
-    Nitrate: {nitrate} mg/L (WHO safe: {WHO_RANGES['nitrate']})
+    pH: {scaled['ph']} (WHO safe: {WHO_RANGES['ph']})
+    TDS: {scaled['tds']} mg/L (WHO safe: {WHO_RANGES['tds']})
+    Hardness: {scaled['hardness']} mg/L (WHO safe: {WHO_RANGES['hardness']})
+    Nitrate: {scaled['nitrate']} mg/L (WHO safe: {WHO_RANGES['nitrate']})
 
     Risk Score: {risk} ({status})
     Detected Elements: {", ".join(elements) if elements else "None"}
@@ -160,32 +141,20 @@ def send_report(
     email_status = send_email(report)
 
     return {
-        "message": "Report generated",
+        "risk_score": risk,
+        "status": status,
+        "scaled_inputs": scaled,
+        "who_safe_ranges": WHO_RANGES,
+        "detected_elements": elements,
+        "treatments": treatments,
         "email_status": email_status
     }
 
-@app.get("/esp_data")
-def esp_data():
-    """Return fake ESP32 sensor readings for testing"""
-    ph = round(random.uniform(6.0, 9.0), 2)
-    tds = round(random.uniform(100, 1200), 1)
-    hardness = round(random.uniform(50, 500), 1)
-    nitrate = round(random.uniform(10, 100), 1)
-
-    risk = calculate_risk(ph, tds, hardness, nitrate)
-    elements = detect_elements(ph, tds, hardness, nitrate)
-
-    if risk < 30:
-        status = "✅ Safe"
-    elif risk < 60:
-        status = "⚠️ Moderate Risk"
-    else:
-        status = "☢️ High Risk"
-
-    return {
-        "risk_score": risk,
-        "status": status,
-        "inputs": {"ph": ph, "tds": tds, "hardness": hardness, "nitrate": nitrate},
-        "who_safe_ranges": WHO_RANGES,
-        "detected_elements": elements
-    }
+# ===== Extra route for manual email =====
+@app.post("/send_report")
+async def send_report(request: Request):
+    body = await request.json()
+    report = body.get("report", "")
+    if not report:
+        return {"status": "error", "message": "Report text is empty"}
+    return send_email(report)
