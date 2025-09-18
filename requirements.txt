@@ -1,7 +1,4 @@
-fastapi
-uvicorn
-pydantic
-twilio
-pandas
-plotly
-streamlit
+flask
+flask-cors
+gunicorn
+python-dotenv
