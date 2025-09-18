@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RAWP - Radio Active Water Predicter</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      background: #f0f8ff;
+      color: #333;
+    }
+    h1 {
+      text-align: center;
+      color: #0077b6;
+    }
+    form {
+      max-width: 400px;
+      margin: 20px auto;
+      padding: 20px;
+      border-radius: 10px;
+      background: white;
+      box-shadow: 0px 4px 6px rgba(0,0,0,0.1);
+    }
+    input, button {
+      width: 100%;
+      padding: 10px;
+      margin: 10px 0;
+      border-radius: 5px;
+      border: 1px solid #ccc;
+    }
+    button {
+      background: #0077b6;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #023e8a;
+    }
+    #result {
+      max-width: 400px;
+      margin: 20px auto;
+      padding: 15px;
+      background: #e6f7ff;
+      border-radius: 8px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <h1>💧☢️ RAWP</h1>
+  <form id="waterForm">
+    <input type="number" step="0.1" name="tds" placeholder="TDS (ppm)" required>
+    <input type="number" step="0.1" name="ph" placeholder="pH" required>
+    <input type="number" step="0.1" name="nitrate" placeholder="Nitrate (mg/L)" required>
+    <input type="number" step="0.1" name="hardness" placeholder="Hardness (mg/L)" required>
+    <input type="text" name="location" placeholder="Location" required>
+    <button type="submit">Predict</button>
+  </form>
+
+  <div id="result"></div>
+
+  <script>
+    document.getElementById("waterForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const formData = new FormData(e.target);
+      const data = Object.fromEntries(formData.entries());
+
+      try {
+        const response = await fetch("https://rawp.onrender.com/submit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        });
+
+        const result = await response.json();
+        document.getElementById("result").style.display = "block";
+        document.getElementById("result").innerHTML = `
+          <h3>🔍 Prediction Result</h3>
+          <p><b>Risk Score:</b> ${result.risk_score}</p>
+          <p><b>Likely Element:</b> ${result.element}</p>
+          <p><b>Recommendation:</b> ${result.recommendation}</p>
+        `;
+      } catch (err) {
+        alert("Error connecting to RAWP backend");
+      }
+    });
+  </script>
+</body>
+</html>
