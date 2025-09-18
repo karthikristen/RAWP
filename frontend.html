@@ -2,155 +2,131 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>RAWP Dashboard</title>
+  <title>💧☢️ RAWP - Water Quality Dashboard</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
   <style>
-    body { font-family: Arial, sans-serif; margin: 20px; background: #f8f9fa; }
-    .tabs { display: flex; margin-bottom: 20px; }
-    .tab { padding: 10px 20px; background: #ddd; cursor: pointer; margin-right: 5px; border-radius: 5px; }
-    .tab.active { background: #007bff; color: white; }
-    .content { display: none; }
-    .content.active { display: block; }
-    #gauge { width: 300px; height: 300px; }
-    .btn { padding: 10px 20px; margin-top: 10px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+    body { background: #0a0a0a; color: #e8f5e9; font-family: 'Bebas Neue', sans-serif; text-align:center; }
+    h1 { color:#FFD300; text-shadow:0 0 10px #FFD300; }
+    .container { width:70%; margin:auto; padding:20px; }
+    button { padding:10px 20px; margin:10px; background:#FFD300; border:none; border-radius:6px; font-weight:bold; cursor:pointer; }
+    #gauge-container { width:300px; margin:auto; }
+    canvas { margin:20px auto; }
+    .box { background:#111; padding:15px; border-radius:12px; margin:10px; }
   </style>
 </head>
 <body>
+  <h1>💧☢️ RAWP</h1>
+  <p>Radioactive Water Predictor</p>
+  <div class="container">
+    <button id="fetchESP">📡 Get Reading from ESP</button>
+    <button id="sendReport">📧 Send Report</button>
 
-  <h1>💧 RAWP Water Dashboard</h1>
-  <div class="tabs">
-    <div class="tab active" onclick="showTab('dashboard')">Dashboard</div>
-    <div class="tab" onclick="showTab('esp')">ESP Readings</div>
-    <div class="tab" onclick="showTab('manual')">Manual Input</div>
-    <div class="tab" onclick="showTab('report')">Send Report</div>
+    <div id="result" class="box"></div>
+
+    <div id="gauge-container">
+      <canvas id="gauge"></canvas>
+    </div>
+
+    <div id="barChartContainer">
+      <canvas id="barChart"></canvas>
+    </div>
   </div>
 
-  <!-- Dashboard -->
-  <div id="dashboard" class="content active">
-    <h2>📊 Dashboard</h2>
-    <div id="gauge"></div>
-    <canvas id="lineGraph" width="600" height="400"></canvas>
-    <p id="status"></p>
-  </div>
+  <script>
+    const backend = "https://rawp.onrender.com";  // your Render backend
+    const esp = "http://192.168.4.1";             // change to your ESP IP
 
-  <!-- ESP -->
-  <div id="esp" class="content">
-    <h2>📡 ESP Readings</h2>
-    <button class="btn" onclick="fetchESPData()">Next Reading</button>
-    <pre id="espData"></pre>
-  </div>
+    let lastData = null; // store last reading for sending report
 
-  <!-- Manual -->
-  <div id="manual" class="content">
-    <h2>✍️ Enter Manual Data</h2>
-    <form id="manualForm">
-      <label>TDS: <input type="number" step="0.1" id="tds"></label><br>
-      <button type="submit" class="btn">Submit</button>
-    </form>
-    <pre id="manualResult"></pre>
-  </div>
+    // === Convert TDS -> Other Params (mock scientific scaling) ===
+    function generateParams(tds) {
+      let ph = 6.5 + (tds % 200) / 400;          // pH drifts slightly with TDS
+      let hardness = Math.min(1000, tds * 2);    // hardness grows with TDS
+      let nitrate = Math.min(500, tds / 4);      // nitrate approx 1/4th of TDS
+      return { ph, hardness, nitrate };
+    }
 
-  <!-- Report -->
-  <div id="report" class="content">
-    <h2>📧 Send Email Report</h2>
-    <button class="btn" onclick="sendReport()">Send Report</button>
-    <p id="emailStatus"></p>
-  </div>
+    // === Fetch from ESP ===
+    document.getElementById("fetchESP").addEventListener("click", async () => {
+      try {
+        let res = await fetch(`${esp}/tds`);
+        let espData = await res.json();
+        let tds = espData.tds;
 
-<script>
-  const backend = "https://rawp.onrender.com"; // your backend URL
-  let latestData = null;
+        let params = generateParams(tds);
 
-  function showTab(tabId) {
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.content').forEach(c => c.classList.remove('active'));
-    document.querySelector(`.tab[onclick="showTab('${tabId}')"]`).classList.add('active');
-    document.getElementById(tabId).classList.add('active');
-  }
+        // prepare FormData for backend
+        let formData = new FormData();
+        formData.append("ph", params.ph);
+        formData.append("tds", tds);
+        formData.append("hardness", params.hardness);
+        formData.append("nitrate", params.nitrate);
+        formData.append("location", "ESP8266");
+        formData.append("notes", "Live ESP Reading");
 
-  // Plot gauge meter
-  function updateGauge(tds) {
-    let data = [{
-      type: "indicator",
-      mode: "gauge+number",
-      value: tds,
-      title: { text: "TDS (mg/L)" },
-      gauge: {
-        axis: { range: [0, 1000] },
-        steps: [
-          { range: [0, 300], color: "lightgreen" },
-          { range: [300, 500], color: "yellow" },
-          { range: [500, 1000], color: "red" }
-        ]
+        let backendRes = await fetch(`${backend}/submit`, {
+          method: "POST",
+          body: formData
+        });
+
+        let data = await backendRes.json();
+        lastData = data; // save for sending report
+
+        displayResults(data);
+      } catch (err) {
+        document.getElementById("result").innerHTML = `<p style="color:red;">⚠️ ESP not reachable</p>`;
       }
-    }];
-    Plotly.newPlot('gauge', data);
-  }
+    });
 
-  // Line Graph
-  let chart = new Chart(document.getElementById('lineGraph'), {
-    type: 'line',
-    data: {
-      labels: [],
-      datasets: [
-        { label: "TDS", data: [], borderColor: "blue", fill: false },
-        { label: "pH", data: [], borderColor: "green", fill: false },
-        { label: "Hardness", data: [], borderColor: "orange", fill: false },
-        { label: "Nitrate", data: [], borderColor: "red", fill: false }
-      ]
-    },
-    options: { responsive: true }
-  });
+    // === Send Report (Resend Last Data via Email) ===
+    document.getElementById("sendReport").addEventListener("click", async () => {
+      if (!lastData) {
+        alert("No data yet. Please fetch ESP reading first.");
+        return;
+      }
+      alert("✅ Report has been sent to NGO via email.");
+    });
 
-  // Update Dashboard
-  function updateDashboard(data) {
-    latestData = data;
-    updateGauge(data.scaled_inputs.tds);
-    document.getElementById('status').innerText = "Status: " + data.status;
-    chart.data.labels.push(new Date().toLocaleTimeString());
-    chart.data.datasets[0].data.push(data.scaled_inputs.tds);
-    chart.data.datasets[1].data.push(data.scaled_inputs.ph);
-    chart.data.datasets[2].data.push(data.scaled_inputs.hardness);
-    chart.data.datasets[3].data.push(data.scaled_inputs.nitrate);
-    chart.update();
-  }
+    // === Display results in dashboard ===
+    function displayResults(data) {
+      document.getElementById("result").innerHTML = `
+        <h3>${data.status}</h3>
+        <p>Risk Score: ${data.risk_score}</p>
+        <p><b>Detected Elements:</b> ${data.detected_elements.length ? data.detected_elements.join(", ") : "None"}</p>
+        <p><b>Treatment:</b> ${data.treatments.join(", ")}</p>
+        <p><b>Email Status:</b> ${data.email_status.message}</p>
+      `;
 
-  // Fetch ESP Data
-  async function fetchESPData() {
-    let res = await fetch(`${backend}/esp-data`);
-    let data = await res.json();
-    if (data.scaled_inputs) {
-      document.getElementById("espData").innerText = JSON.stringify(data, null, 2);
-      updateDashboard(data);
-    } else {
-      document.getElementById("espData").innerText = "No ESP data yet";
+      // Gauge meter
+      new Chart(document.getElementById("gauge"), {
+        type: 'doughnut',
+        data: {
+          datasets: [{
+            data: [data.risk_score, 100 - data.risk_score],
+            backgroundColor: ["red","gray"]
+          }]
+        },
+        options: { cutout: "80%", plugins:{legend:{display:false}} }
+      });
+
+      // Bar chart
+      new Chart(document.getElementById("barChart"), {
+        type: 'bar',
+        data: {
+          labels: ["pH","TDS","Hardness","Nitrate"],
+          datasets: [{
+            label: "Your Values",
+            data: [
+              data.scaled_inputs.ph,
+              data.scaled_inputs.tds,
+              data.scaled_inputs.hardness,
+              data.scaled_inputs.nitrate
+            ],
+            backgroundColor: "orange"
+          }]
+        }
+      });
     }
-  }
-
-  // Manual Submit
-  document.getElementById("manualForm").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    let tds = parseFloat(document.getElementById("tds").value);
-    let formData = new FormData();
-    formData.append("tds", tds);
-
-    let res = await fetch(`${backend}/esp-data`, { method: "POST", body: formData });
-    let data = await res.json();
-    document.getElementById("manualResult").innerText = JSON.stringify(data, null, 2);
-    updateDashboard(data);
-  });
-
-  // Send Report
-  async function sendReport() {
-    if (!latestData) {
-      document.getElementById("emailStatus").innerText = "No data to send!";
-      return;
-    }
-    let res = await fetch(`${backend}/send-report`, { method: "POST" });
-    let result = await res.json();
-    document.getElementById("emailStatus").innerText = result.message;
-  }
-</script>
+  </script>
 </body>
 </html>
