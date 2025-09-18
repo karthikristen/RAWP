@@ -1,148 +1,65 @@
-from fastapi import FastAPI, Form
-from fastapi.middleware.cors import CORSMiddleware
-import smtplib, ssl, os
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
+# app.py
+from fastapi import FastAPI
+from pydantic import BaseModel
+from fastapi.responses import JSONResponse
+import datetime
 
 app = FastAPI()
 
-# ===== Allow frontend & ESP to talk to backend =====
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Fake DB (in-memory for now)
+latest_data = {}
 
-# ===== WHO Safe Ranges =====
-WHO_RANGES = {
-    "ph": "6.5 – 8.5",
-    "tds": "≤ 500 mg/L",
-    "hardness": "≤ 200 mg/L",
-    "nitrate": "≤ 45 mg/L"
-}
+class WaterSample(BaseModel):
+    location: str
+    ph: float
+    tds: float
+    hardness: float
+    nitrate: float
 
-# ===== Convert scaled (0–100) inputs into real-world units =====
-def scale_inputs(ph_in, tds_in, hardness_in, nitrate_in):
-    return {
-        "ph": round((ph_in / 100) * 14, 2),
-        "tds": round((tds_in / 100) * 2000, 1),
-        "hardness": round((hardness_in / 100) * 1000, 1),
-        "nitrate": round((nitrate_in / 100) * 500, 1)
-    }
-
-# ===== Calculate Risk Score =====
-def calculate_risk(scaled):
-    score = 0
-    ph, tds, hardness, nitrate = scaled["ph"], scaled["tds"], scaled["hardness"], scaled["nitrate"]
-
-    if ph < 6.5 or ph > 8.5: score += 30
-    if tds > 500: score += 25
-    if hardness > 200: score += 20
-    if nitrate > 45: score += 25
-
-    return score
-
-# ===== Detect Radioactive Elements =====
-def detect_elements(scaled):
+def calculate_risk(data: WaterSample):
     elements = []
-    ph, tds, hardness, nitrate = scaled["ph"], scaled["tds"], scaled["hardness"], scaled["nitrate"]
+    risk = 0
 
-    if ph < 6.5 or hardness > 200:
+    if data.ph < 6.5:
         elements.append("Uranium")
-    if nitrate > 45 and tds > 500:
-        elements.append("Cesium")
-    if ph > 7.5 and hardness < 150:
+        risk += 2
+    if data.ph > 7.5 and data.hardness < 40:
         elements.append("Radium")
-
-    return elements
-
-# ===== Treatment Suggestions =====
-TREATMENTS = {
-    "Uranium": "Reverse osmosis or activated alumina treatment.",
-    "Cesium": "Ion exchange or reverse osmosis filters.",
-    "Radium": "Water softening (lime-soda ash) or ion exchange."
-}
-
-# ===== Email Function =====
-def send_email(report):
-    EMAIL_USER = os.getenv("EMAIL_USER", "")
-    EMAIL_PASS = os.getenv("EMAIL_PASS", "")
-    ALERT_EMAIL = os.getenv("ALERT_EMAIL", "")
-
-    if not EMAIL_USER or not EMAIL_PASS or not ALERT_EMAIL:
-        return {"status": "error", "message": "Email environment variables not set"}
-
-    try:
-        msg = MIMEMultipart()
-        msg["From"] = EMAIL_USER
-        msg["To"] = ALERT_EMAIL
-        msg["Subject"] = "RAWP Water Contamination Report"
-
-        msg.attach(MIMEText(report, "plain"))
-
-        context = ssl.create_default_context()
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465, context=context) as server:
-            server.login(EMAIL_USER, EMAIL_PASS)
-            server.sendmail(EMAIL_USER, ALERT_EMAIL, msg.as_string())
-
-        return {"status": "success", "message": "Report sent via email ✅"}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-# ===== Routes =====
-@app.get("/")
-def home():
-    return {"status": "RAWP is running ✅", "message": "Send water data to /submit"}
-
-@app.post("/submit")
-def submit_data(
-    ph: float = Form(...),
-    tds: float = Form(...),
-    hardness: float = Form(...),
-    nitrate: float = Form(...),
-    location: str = Form("Unknown"),
-    notes: str = Form("")
-):
-    scaled = scale_inputs(ph, tds, hardness, nitrate)
-    risk = calculate_risk(scaled)
-    elements = detect_elements(scaled)
-
-    if risk < 30:
-        status = "✅ Safe"
-    elif risk < 60:
-        status = "⚠️ Moderate Risk"
-    else:
-        status = "☢️ High Risk"
-
-    treatments = [TREATMENTS[e] for e in elements] if elements else ["No treatment required"]
-
-    # Prepare Report
-    report = f"""
-    RAWP Water Contamination Report
-    Location: {location}
-
-    Parameters:
-    pH: {scaled['ph']} (WHO safe: {WHO_RANGES['ph']})
-    TDS: {scaled['tds']} mg/L (WHO safe: {WHO_RANGES['tds']})
-    Hardness: {scaled['hardness']} mg/L (WHO safe: {WHO_RANGES['hardness']})
-    Nitrate: {scaled['nitrate']} mg/L (WHO safe: {WHO_RANGES['nitrate']})
-
-    Risk Score: {risk} ({status})
-    Detected Elements: {", ".join(elements) if elements else "None"}
-    Suggested Treatment: {", ".join(treatments)}
-
-    Notes: {notes}
-    """
-
-    email_status = send_email(report)
+        risk += 2
+    if data.nitrate > 60 and data.tds > 70:
+        elements.append("Cesium")
+        risk += 3
 
     return {
         "risk_score": risk,
-        "status": status,
-        "scaled_inputs": scaled,
-        "who_safe_ranges": WHO_RANGES,
-        "detected_elements": elements,
-        "treatments": treatments,
-        "email_status": email_status
+        "elements": elements
     }
+
+@app.get("/latest")
+async def get_latest():
+    if not latest_data:
+        return {"message": "No data yet"}
+    return latest_data
+
+@app.post("/submit")
+async def submit_data(sample: WaterSample):
+    global latest_data
+    risk_info = calculate_risk(sample)
+    latest_data = {
+        "location": sample.location,
+        "ph": sample.ph,
+        "tds": sample.tds,
+        "hardness": sample.hardness,
+        "nitrate": sample.nitrate,
+        "risk_score": risk_info["risk_score"],
+        "elements": risk_info["elements"],
+        "timestamp": datetime.datetime.now().isoformat()
+    }
+    return {"status": "Data submitted", "data": latest_data}
+
+@app.post("/send_report")
+async def send_report():
+    if not latest_data:
+        return {"error": "No data to report"}
+    # For now, just return report as JSON (email can be added later)
+    return {"status": "Report generated", "report": latest_data}
