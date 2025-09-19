@@ -1,312 +1,93 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <title>RAWP — Radioactive Water Predicter</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta charset="UTF-8">
+  <title>💧☢️ RAWP - Radioactive Water Predicter</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    :root{ --bg:#0a0a0a; --card:#0f0f0f; --accent:#39FF14; --gold:#FFD300; --muted:#cfe8c8; }
-    body{background:var(--bg); color:var(--muted); font-family:Arial, Helvetica, sans-serif; margin:0; padding:18px;}
-    header{text-align:center;}
-    h1{color:var(--gold); margin:6px 0;}
-    .wrap{max-width:1100px;margin:12px auto;}
-    .tabs{display:flex; gap:8px; justify-content:center; margin-bottom:12px;}
-    .tab{padding:10px 14px; background:var(--card); border-radius:8px; cursor:pointer; border:1px solid rgba(255,255,255,0.03);}
-    .tab.active{background:linear-gradient(90deg,var(--gold),#ff7518); color:#000; font-weight:bold;}
-    .panel{display:none; background:linear-gradient(#0d0d0d,#0b0b0b); padding:16px; border-radius:10px; border:1px solid rgba(57,255,20,0.05);}
-    .panel.active{display:block;}
-    form input, form textarea{width:100%;padding:10px;border-radius:8px;border:1px solid #222;background:#0b0b0b;color:var(--muted);margin:8px 0;}
-    button{padding:10px 14px;border-radius:8px;border:none;background:var(--gold);color:#000;cursor:pointer;font-weight:bold;}
-    .grid{display:grid; grid-template-columns: 1fr 420px; gap:18px; align-items:start;}
-    .card{background:var(--card); padding:12px; border-radius:10px; border:1px solid rgba(255,255,255,0.02);}
-    .charts{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:12px;}
-    pre{background:#060606;color:#cfcfcf;padding:12px;border-radius:8px;overflow:auto;}
-    footer{text-align:center;color:#7f7f7f;margin-top:18px;}
-    @media(max-width:900px){ .grid{grid-template-columns:1fr;} .charts{grid-template-columns:1fr;} }
+    body { background:#0a0a0a; color:#e8f5e9; font-family: 'Bebas Neue', sans-serif; text-align:center; }
+    h1 { color:#FFD300; text-shadow:0 0 10px #FFD300; }
+    .container { width:80%; margin:auto; }
+    input, textarea { padding:8px; margin:6px; width:80%; border-radius:6px; }
+    button { padding:10px 20px; margin:10px; background:#FFD300; border:none; border-radius:6px; font-weight:bold; }
+    .box { background:#111; padding:15px; border-radius:12px; margin:15px 0; }
+    canvas { margin:20px auto; }
   </style>
 </head>
 <body>
-  <header>
-    <h1>💧☢️ RAWP — Radioactive Water Predicter</h1>
-    <p style="color:var(--accent);margin-top:0;">Monitor • Detect probable radioactive elements • Report</p>
-  </header>
+  <h1>💧☢️ RAWP</h1>
+  <p>Radioactive Water Predicter Dashboard</p>
+  <div class="container">
+    <form id="waterForm">
+      <input type="number" step="0.1" name="ph" placeholder="pH (0–100 scale)" required><br>
+      <input type="number" step="0.1" name="tds" placeholder="TDS (0–100 scale)" required><br>
+      <input type="number" step="0.1" name="hardness" placeholder="Hardness (0–100 scale)" required><br>
+      <input type="number" step="0.1" name="nitrate" placeholder="Nitrate (0–100 scale)" required><br>
+      <input type="text" name="location" placeholder="Location"><br>
+      <textarea name="notes" placeholder="Extra Notes..."></textarea><br>
+      <button type="submit">Run Analysis</button>
+    </form>
 
-  <div class="wrap">
-    <div class="tabs" role="tablist">
-      <div class="tab active" data-tab="dashboard">Dashboard</div>
-      <div class="tab" data-tab="manual">Manual Input</div>
-      <div class="tab" data-tab="esp">ESP (simulate/send)</div>
-      <div class="tab" data-tab="report">Send Report</div>
-    </div>
+    <div id="result" class="box"></div>
+    <canvas id="gauge" width="250" height="250"></canvas>
 
-    <!-- Dashboard (shows charts + latest) -->
-    <section id="dashboard" class="panel active card">
-      <div class="grid">
-        <div>
-          <h3 style="margin-top:0;color:var(--gold)">Latest Analysis</h3>
-          <div id="latestBlock">No data yet. Submit a reading (Manual or ESP) to see results.</div>
-          <div style="margin-top:12px;">
-            <button id="refreshHistory">Refresh History</button>
-            <button id="clearHistory" style="margin-left:8px;background:#ff6b6b">Clear History</button>
-          </div>
-          <div style="margin-top:12px;">
-            <h4 style="color:var(--accent);margin-bottom:6px">History (last items)</h4>
-            <div id="historyList" style="max-height:220px; overflow:auto"></div>
-          </div>
-        </div>
-
-        <div>
-          <div class="card">
-            <h4 style="margin:0;color:var(--accent)">Risk Gauge</h4>
-            <canvas id="gauge" width="320" height="240"></canvas>
-          </div>
-        </div>
-      </div>
-
-      <div class="charts">
-        <div class="card">
-          <h4 style="margin:0;color:var(--accent)">Bar — Current vs WHO Safe</h4>
-          <canvas id="barChart"></canvas>
-        </div>
-        <div class="card">
-          <h4 style="margin:0;color:var(--accent)">Line — Trend (history)</h4>
-          <canvas id="lineChart"></canvas>
-        </div>
-      </div>
-    </section>
-
-    <!-- Manual Input -->
-    <section id="manual" class="panel card">
-      <h3 style="margin-top:0;color:var(--gold)">Manual Input</h3>
-      <form id="manualForm">
-        <input name="location" placeholder="Location (e.g., Chennai)" />
-        <input name="ph" type="number" step="0.01" placeholder="pH (e.g., 7.2)" required />
-        <input name="tds" type="number" step="0.1" placeholder="TDS (mg/L) (e.g., 320)" required />
-        <input name="hardness" type="number" step="0.1" placeholder="Hardness (mg/L)" required />
-        <input name="nitrate" type="number" step="0.1" placeholder="Nitrate (mg/L)" required />
-        <textarea name="notes" placeholder="Notes (optional)"></textarea>
-        <button type="submit">Run Analysis</button>
-      </form>
-      <div style="margin-top:12px" id="manualResult"></div>
-    </section>
-
-    <!-- ESP (for when hardware is working you will POST /submit from the device).
-         For now this tab allows entering just TDS to simulate an ESP reading. -->
-    <section id="esp" class="panel card">
-      <h3 style="margin-top:0;color:var(--gold)">ESP — TDS Submit</h3>
-      <p style="margin:6px 0;color:var(--muted)">Enter TDS (mg/L) as read by your sensor; backend will generate correlated pH/hardness/nitrate.</p>
-      <form id="espForm">
-        <input name="tds" type="number" step="0.1" placeholder="TDS (mg/L) from ESP" required />
-        <input name="location" placeholder="Location (optional)" />
-        <textarea name="notes" placeholder="Notes (optional)"></textarea>
-        <button type="submit">Submit ESP Reading</button>
-      </form>
-      <div style="margin-top:12px" id="espResult"></div>
-      <p style="color:#c0c0c0;margin-top:10px;font-size:13px">When ESP hardware is working, it can POST directly to this same /submit endpoint.</p>
-    </section>
-
-    <!-- Report -->
-    <section id="report" class="panel card">
-      <h3 style="margin-top:0;color:var(--gold)">Send Last Report</h3>
-      <p>Click the button below to email the most recent stored report to the NGO email configured on the server.</p>
-      <button id="sendReportBtn">Send Report via Email</button>
-      <div id="reportStatus" style="margin-top:12px"></div>
-    </section>
+    <h3>📊 Parameter Trends</h3>
+    <canvas id="phChart"></canvas>
+    <canvas id="tdsChart"></canvas>
+    <canvas id="hardnessChart"></canvas>
+    <canvas id="nitrateChart"></canvas>
   </div>
 
-  <footer>
-    <p>RAWP • Demo • Use responsibly • Lab confirmation required for regulatory action</p>
-  </footer>
+  <script>
+    const backend = "https://rawp.onrender.com";
+    let phData = [], tdsData = [], hardnessData = [], nitrateData = [], labels = [];
 
-<script>
-const backend = "https://rawp.onrender.com"; // CHANGE if your backend URL differs
-
-// UI wiring for tabs
-document.querySelectorAll('.tab').forEach(t => {
-  t.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
-    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-    t.classList.add('active');
-    document.getElementById(t.dataset.tab).classList.add('active');
-  });
-});
-
-// charts
-let gaugeChart = null;
-let barChart = null;
-let lineChart = null;
-const historyMax = 40;
-let trendLabels = [];
-let trendTds = [];
-let trendPh = [];
-let trendHard = [];
-let trendNitr = [];
-
-function drawGauge(value){
-  const ctx = document.getElementById('gauge').getContext('2d');
-  if(gaugeChart) gaugeChart.destroy();
-  gaugeChart = new Chart(ctx, {
-    type: 'doughnut',
-    data: { datasets:[{ data:[value, 100-value], backgroundColor: [ value>=60? '#ff5c5c' : value>=30? '#ffb84d' : '#39ff14' ]}]},
-    options: { cutout: '70%', plugins:{legend:{display:false}, tooltip:{enabled:false}}}
-  });
-}
-
-function drawBar(scaled){
-  const ctx = document.getElementById('barChart').getContext('2d');
-  if(barChart) barChart.destroy();
-  barChart = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels: ['pH','TDS','Hardness','Nitrate'],
-      datasets: [
-        { label: 'Value', data: [scaled.ph, scaled.tds, scaled.hardness, scaled.nitrate], backgroundColor: '#ffb84d' }
-      ]
-    },
-    options: { scales:{ y:{ beginAtZero:true } } }
-  });
-}
-
-function drawLine(){
-  const ctx = document.getElementById('lineChart').getContext('2d');
-  if(lineChart) lineChart.destroy();
-  lineChart = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels: trendLabels,
-      datasets: [
-        { label:'TDS', data: trendTds, borderColor:'#4ea8de', fill:false, tension:0.2 },
-        { label:'pH', data: trendPh, borderColor:'#7bd389', fill:false, tension:0.2 },
-        { label:'Hardness', data: trendHard, borderColor:'#f6c85f', fill:false, tension:0.2 },
-        { label:'Nitrate', data: trendNitr, borderColor:'#f08a8a', fill:false, tension:0.2 }
-      ]
-    },
-    options: { interaction: { mode:'index', intersect:false }, stacked:false }
-  });
-}
-
-function updateHistoryTrend(item){
-  const label = new Date(item.timestamp).toLocaleTimeString();
-  trendLabels.push(label);
-  trendTds.push(item.scaled_inputs.tds);
-  trendPh.push(item.scaled_inputs.ph);
-  trendHard.push(item.scaled_inputs.hardness);
-  trendNitr.push(item.scaled_inputs.nitrate);
-
-  // keep length
-  if(trendLabels.length > historyMax){
-    trendLabels.shift(); trendTds.shift(); trendPh.shift(); trendHard.shift(); trendNitr.shift();
-  }
-  drawLine();
-}
-
-// refresh history display
-async function refreshHistory(){
-  try{
-    const r = await fetch(`${backend}/history`);
-    const j = await r.json();
-    const hist = j.history || [];
-    const list = document.getElementById('historyList');
-    list.innerHTML = hist.slice().reverse().map(it => {
-      return `<pre style="background:#060606;padding:8px;border-radius:8px;color:#dfefe0;margin-bottom:8px;">
-Time: ${new Date(it.timestamp).toLocaleString()}
-Loc: ${it.location}
-pH: ${it.scaled_inputs.ph}  TDS: ${it.scaled_inputs.tds} mg/L  Hardness: ${it.scaled_inputs.hardness}  Nitrate: ${it.scaled_inputs.nitrate}
-Risk: ${it.risk_score} · ${it.status}
-</pre>`;
-    }).join('');
-    // update trend arrays from server history (last N)
-    trendLabels=[]; trendTds=[]; trendPh=[]; trendHard=[]; trendNitr=[];
-    hist.slice(-historyMax).forEach(it => updateHistoryTrend(it));
-    // show latest block if exists
-    if(hist.length){
-      const latest = hist[hist.length-1];
-      document.getElementById('latestBlock').innerHTML = `
-        <div><strong>Location:</strong> ${latest.location}</div>
-        <div><strong>pH:</strong> ${latest.scaled_inputs.ph}</div>
-        <div><strong>TDS:</strong> ${latest.scaled_inputs.tds} mg/L</div>
-        <div><strong>Hardness:</strong> ${latest.scaled_inputs.hardness} mg/L</div>
-        <div><strong>Nitrate:</strong> ${latest.scaled_inputs.nitrate} mg/L</div>
-        <div style="margin-top:8px;"><strong>Risk:</strong> ${latest.risk_score} · ${latest.status}</div>
-        <div><strong>Elements:</strong> ${latest.detected_elements?.length ? latest.detected_elements.join(', ') : 'None'}</div>
-      `;
-      drawGauge(latest.risk_score);
-      drawBar(latest.scaled_inputs);
-    } else {
-      document.getElementById('latestBlock').innerText = 'No data yet. Submit a reading.';
-      drawGauge(0);
+    function updateGauge(risk) {
+      let color = risk < 30 ? "green" : risk < 60 ? "orange" : "red";
+      new Chart(document.getElementById("gauge"), {
+        type: 'doughnut',
+        data: {
+          datasets: [{ data: [risk, 100-risk], backgroundColor:[color,"#333"] }]
+        },
+        options: { cutout:"75%", plugins:{legend:{display:false}} }
+      });
     }
-  }catch(err){
-    console.error(err);
-    document.getElementById('latestBlock').innerText = 'Error fetching history';
-  }
-}
 
+    function updateLineChart(canvasId, label, data, color) {
+      new Chart(document.getElementById(canvasId), {
+        type: "line",
+        data: { labels: labels, datasets:[{ label: label, data: data, borderColor: color, fill:false }] },
+        options: { responsive:true, scales:{ y:{ beginAtZero:true } } }
+      });
+    }
 
-// handle manual form
-document.getElementById('manualForm').addEventListener('submit', async e => {
-  e.preventDefault();
-  const fd = new FormData(e.target);
-  document.getElementById('manualResult').innerText = 'Analyzing...';
-  try{
-    const res = await fetch(`${backend}/submit`, { method:'POST', body: fd });
-    const j = await res.json();
-    const payload = j.result;
-    document.getElementById('manualResult').innerHTML = `<pre style="color:#dfefe0">${payload.status} · Risk ${payload.risk_score}</pre>`;
-    await refreshHistory();
-  }catch(err){
-    console.error(err);
-    document.getElementById('manualResult').innerText = 'Submit failed';
-  }
-});
+    document.getElementById("waterForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const formData = new FormData(e.target);
+      const res = await fetch(`${backend}/submit`, { method:"POST", body: formData });
+      const data = await res.json();
 
-// ESP (simulate / send single tds reading)
-document.getElementById('espForm').addEventListener('submit', async e => {
-  e.preventDefault();
-  const fd = new FormData(e.target);
-  document.getElementById('espResult').innerText = 'Submitting ESP reading...';
-  try{
-    const res = await fetch(`${backend}/submit`, { method:'POST', body: fd });
-    const j = await res.json();
-    const payload = j.result;
-    document.getElementById('espResult').innerHTML = `<pre style="color:#dfefe0">${payload.status} · Risk ${payload.risk_score}</pre>`;
-    await refreshHistory();
-  }catch(err){
-    console.error(err);
-    document.getElementById('espResult').innerText = 'ESP submit failed';
-  }
-});
+      document.getElementById("result").innerHTML = `
+        <h3>${data.status}</h3>
+        <p>Risk Score: ${data.risk_score}</p>
+        <p><b>Detected Elements:</b> ${data.detected_elements.length ? data.detected_elements.join(", ") : "None"}</p>
+        <p><b>Treatment:</b> ${data.treatments.join(", ")}</p>
+        <p><b>Email Status:</b> ${data.email_status.message}</p>
+      `;
 
-// send last report via email
-document.getElementById('sendReportBtn').addEventListener('click', async () => {
-  document.getElementById('reportStatus').innerText = 'Sending...';
-  try{
-    const r = await fetch(`${backend}/report`, { method:'POST' });
-    const j = await r.json();
-    document.getElementById('reportStatus').innerText = j.message || j;
-  }catch(err){
-    console.error(err);
-    document.getElementById('reportStatus').innerText = 'Send failed';
-  }
-});
+      // Update charts
+      labels.push(`Reading ${labels.length+1}`);
+      phData.push(data.scaled_inputs.ph);
+      tdsData.push(data.scaled_inputs.tds);
+      hardnessData.push(data.scaled_inputs.hardness);
+      nitrateData.push(data.scaled_inputs.nitrate);
 
-// refresh/clear controls
-document.getElementById('refreshHistory').addEventListener('click', refreshHistory);
-document.getElementById('clearHistory').addEventListener('click', async () => {
-  // simple client-side clear (server side we kept persistent in memory; you could implement deletion endpoint if needed)
-  trendLabels=[]; trendTds=[]; trendPh=[]; trendHard=[]; trendNitr=[];
-  document.getElementById('historyList').innerHTML = '';
-  drawLine();
-  document.getElementById('latestBlock').innerText = 'History cleared locally. Server history remains until restart.';
-});
-
-// initial load
-refreshHistory();
-drawGauge(0);
-drawBar({ph:0, tds:0, hardness:0, nitrate:0});
-drawLine();
-
-</script>
+      updateGauge(data.risk_score);
+      updateLineChart("phChart","pH",phData,"cyan");
+      updateLineChart("tdsChart","TDS",tdsData,"yellow");
+      updateLineChart("hardnessChart","Hardness",hardnessData,"orange");
+      updateLineChart("nitrateChart","Nitrate",nitrateData,"red");
+    });
+  </script>
 </body>
 </html>
